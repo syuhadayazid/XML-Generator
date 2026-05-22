@@ -161,6 +161,34 @@
       margin-top: 18px;
     }
 
+    .dropzone {
+      margin-top: 18px;
+      border: 2px dashed var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      background: #f9f3e9;
+      color: var(--muted);
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .dropzone.active {
+      border-color: var(--accent);
+      background: #ecf8f5;
+      color: var(--accent-dark);
+    }
+
+    .file-pill {
+      display: inline-block;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+
     .status {
       margin-top: 18px;
       padding: 14px 16px;
@@ -181,6 +209,13 @@
       grid-template-columns: 1fr;
       gap: 16px;
       margin-top: 18px;
+    }
+
+    .warning-list {
+      margin: 0;
+      padding-left: 20px;
+      max-height: 180px;
+      overflow: auto;
     }
 
     code, pre {
@@ -209,6 +244,28 @@
       margin-top: 32px;
       font-size: 0.95rem;
       color: var(--muted);
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 9999;
+      background: #1f2937;
+      color: #f9fafb;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.92rem;
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
     }
   </style>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -271,9 +328,16 @@
           </div>
         </div>
 
+        <div id="dropzone" class="dropzone">
+          Drop TXT/XLSX file here or use file picker above.
+          <div id="selectedFile" class="file-pill">No file selected</div>
+        </div>
+
         <div class="tool-actions">
           <button id="generateButton" type="button">Generate XML</button>
           <button id="downloadButton" class="secondary" type="button" disabled>Download XML</button>
+          <button id="copyButton" class="secondary" type="button" disabled>Copy XML</button>
+          <button id="summaryButton" class="secondary" type="button" disabled>Download Summary</button>
         </div>
 
         <div id="statusBox" class="status">No file loaded yet.</div>
@@ -282,6 +346,12 @@
           <section class="output">
             <h3>Generated XML</h3>
             <pre id="xmlPreview">Generate XML to preview the output here.</pre>
+          </section>
+          <section class="output">
+            <h3>Warnings</h3>
+            <ul id="warningList" class="warning-list">
+              <li>No warnings.</li>
+            </ul>
           </section>
         </div>
       </section>
@@ -298,6 +368,8 @@
     </section>
   </main>
 
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
   <script>
     const inputFile = document.getElementById("inputFile");
     const columnName = document.getElementById("columnName");
@@ -305,15 +377,103 @@
     const downloadName = document.getElementById("downloadName");
     const generateButton = document.getElementById("generateButton");
     const downloadButton = document.getElementById("downloadButton");
+    const copyButton = document.getElementById("copyButton");
+    const summaryButton = document.getElementById("summaryButton");
     const statusBox = document.getElementById("statusBox");
     const xmlPreview = document.getElementById("xmlPreview");
+    const dropzone = document.getElementById("dropzone");
+    const selectedFileTag = document.getElementById("selectedFile");
+    const warningList = document.getElementById("warningList");
+    const toast = document.getElementById("toast");
 
     let generatedXml = "";
+    let generatedSummary = "";
+    let selectedFile = null;
+    let toastTimer = null;
+
+    function setSelectedFile(file) {
+      selectedFile = file || null;
+      selectedFileTag.textContent = selectedFile ? selectedFile.name : "No file selected";
+      if (selectedFile) {
+        const baseName = selectedFile.name.replace(/\.[^.]+$/, "");
+        downloadName.value = `${baseName}-outputXML`;
+      } else {
+        downloadName.value = "generated-sample.xml";
+      }
+    }
+
+    function renderWarnings(items) {
+      warningList.innerHTML = "";
+      if (!items || items.length === 0) {
+        const li = document.createElement("li");
+        li.textContent = "No warnings.";
+        warningList.appendChild(li);
+        return;
+      }
+
+      items.slice(0, 25).forEach((msg) => {
+        const li = document.createElement("li");
+        li.textContent = msg;
+        warningList.appendChild(li);
+      });
+    }
 
     function setStatus(message, isWarn = false) {
       statusBox.textContent = message;
       statusBox.className = isWarn ? "status warn" : "status";
     }
+
+    function showToast(message) {
+      if (!toast) {
+        return;
+      }
+
+      if (toastTimer) {
+        clearTimeout(toastTimer);
+      }
+
+      toast.textContent = message;
+      toast.classList.add("show");
+      toastTimer = setTimeout(() => {
+        toast.classList.remove("show");
+      }, 1800);
+    }
+
+    inputFile.addEventListener("change", () => {
+      setSelectedFile(inputFile.files[0] || null);
+    });
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+      dropzone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dropzone.classList.add("active");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+      dropzone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dropzone.classList.remove("active");
+      });
+    });
+
+    dropzone.addEventListener("drop", (event) => {
+      const files = event.dataTransfer && event.dataTransfer.files;
+      if (!files || !files.length) {
+        return;
+      }
+      const file = files[0];
+      const ext = file.name.toLowerCase();
+      if (!(ext.endsWith(".txt") || ext.endsWith(".xlsx"))) {
+        setStatus("Unsupported file. Please drop a TXT or XLSX file.", true);
+        return;
+      }
+      setSelectedFile(file);
+      inputFile.value = "";
+      generateFromFile(file);
+    });
 
     function normalizeHeader(text) {
       return (text || "").replace(/\s+/g, "").trim().toLowerCase();
@@ -570,8 +730,7 @@
       throw new Error("Unsupported file type. Please upload a .txt or .xlsx file.");
     }
 
-    generateButton.addEventListener("click", async () => {
-      const file = inputFile.files[0];
+    async function generateFromFile(file) {
       if (!file) {
         setStatus("Please choose a TXT or XLSX file first.", true);
         return;
@@ -579,8 +738,12 @@
 
       generateButton.disabled = true;
       downloadButton.disabled = true;
+      copyButton.disabled = true;
+      summaryButton.disabled = true;
       generatedXml = "";
+      generatedSummary = "";
       xmlPreview.textContent = "Working...";
+      renderWarnings([]);
       setStatus(`Reading ${file.name}...`);
 
       try {
@@ -589,18 +752,38 @@
         generatedXml = result.xml;
         xmlPreview.textContent = generatedXml;
         downloadButton.disabled = false;
+        copyButton.disabled = false;
+        summaryButton.disabled = false;
+
+        generatedSummary = [
+          `Input file: ${file.name}`,
+          `Detected root: ${result.rootName}`,
+          `Lines used: ${result.used}`,
+          `Lines skipped: ${result.skipped}`,
+          `Warnings count: ${result.malformed.length}`,
+          "",
+          "Warnings:",
+          ...(result.malformed.length ? result.malformed : ["No warnings."])
+        ].join("\n");
 
         let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
           message += ` Warnings: ${result.malformed.slice(0, 3).join(" | ")}`;
         }
+        renderWarnings(result.malformed);
         setStatus(message, result.malformed.length > 0);
       } catch (error) {
         xmlPreview.textContent = "Generation failed.";
+        renderWarnings([error.message]);
         setStatus(error.message, true);
       } finally {
         generateButton.disabled = false;
       }
+    }
+
+    generateButton.addEventListener("click", async () => {
+      const file = selectedFile || inputFile.files[0];
+      await generateFromFile(file);
     });
 
     downloadButton.addEventListener("click", () => {
@@ -614,6 +797,39 @@
       const link = document.createElement("a");
       link.href = url;
       link.download = fileName.endsWith(".xml") ? fileName : `${fileName}.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    copyButton.addEventListener("click", async () => {
+      if (!generatedXml) {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(generatedXml);
+        setStatus("XML copied to clipboard.");
+        showToast("Copied XML to clipboard");
+      } catch (error) {
+        setStatus("Copy failed. Your browser may block clipboard access.", true);
+        showToast("Copy failed");
+      }
+    });
+
+    summaryButton.addEventListener("click", () => {
+      if (!generatedSummary) {
+        return;
+      }
+
+      const base = (downloadName.value || "generated-sample").replace(/\.xml$/i, "").trim() || "generated-sample";
+      const summaryName = `${base}-summary.txt`;
+      const blob = new Blob([generatedSummary], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = summaryName;
       document.body.appendChild(link);
       link.click();
       link.remove();
