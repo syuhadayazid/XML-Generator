@@ -332,7 +332,6 @@
           <button id="generateButton" type="button">Generate XML</button>
           <button id="downloadButton" class="secondary" type="button" disabled>Download XML</button>
           <button id="copyButton" class="secondary" type="button" disabled>Copy XML</button>
-          <button id="summaryButton" class="secondary" type="button" disabled>Download Summary</button>
         </div>
 
         <div id="statusBox" class="status">No file loaded yet.</div>
@@ -365,7 +364,6 @@
     const generateButton = document.getElementById("generateButton");
     const downloadButton = document.getElementById("downloadButton");
     const copyButton = document.getElementById("copyButton");
-    const summaryButton = document.getElementById("summaryButton");
     const statusBox = document.getElementById("statusBox");
     const xmlPreview = document.getElementById("xmlPreview");
     const dropzone = document.getElementById("dropzone");
@@ -374,7 +372,6 @@
     const toast = document.getElementById("toast");
 
     let generatedXml = "";
-    let generatedSummary = "";
     let selectedFile = null;
     let toastTimer = null;
 
@@ -726,9 +723,7 @@
       generateButton.disabled = true;
       downloadButton.disabled = true;
       copyButton.disabled = true;
-      summaryButton.disabled = true;
       generatedXml = "";
-      generatedSummary = "";
       xmlPreview.textContent = "Working...";
       renderWarnings([]);
       setStatus(`Reading ${file.name}...`);
@@ -740,18 +735,6 @@
         xmlPreview.textContent = generatedXml;
         downloadButton.disabled = false;
         copyButton.disabled = false;
-        summaryButton.disabled = false;
-
-        generatedSummary = [
-          `Input file: ${file.name}`,
-          `Detected root: ${result.rootName}`,
-          `Lines used: ${result.used}`,
-          `Lines skipped: ${result.skipped}`,
-          `Warnings count: ${result.malformed.length}`,
-          "",
-          "Warnings:",
-          ...(result.malformed.length ? result.malformed : ["No warnings."])
-        ].join("\n");
 
         let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
@@ -805,23 +788,6 @@
       }
     });
 
-    summaryButton.addEventListener("click", () => {
-      if (!generatedSummary) {
-        return;
-      }
-
-      const base = (downloadName.value || "generated-sample").replace(/\.xml$/i, "").trim() || "generated-sample";
-      const summaryName = `${base}-summary.txt`;
-      const blob = new Blob([generatedSummary], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = summaryName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    });
   </script>
 </body>
 </html>
