@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XML Generator</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --panel: #fffaf2;
+      --panel-strong: #fffdf8;
+      --ink: #1f2937;
+      --muted: #5b6470;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --line: #d9cdbb;
+      --warn: #92400e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 35%),
+        linear-gradient(180deg, #f8f3ea 0%, var(--bg) 100%);
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px 64px;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 32px;
+      box-shadow: 0 18px 40px rgba(31, 41, 55, 0.08);
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 16px;
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 5vw, 4rem);
+      letter-spacing: -0.03em;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      margin-top: 28px;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      margin-top: 0;
+    }
+
+    p, li, label {
+      font-size: 1rem;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    .lead {
+      max-width: 65ch;
+      font-size: 1.08rem;
+      color: var(--ink);
+    }
+
+    .actions,
+    .tool-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .actions {
+      margin-top: 24px;
+    }
+
+    .button,
+    button {
+      display: inline-block;
+      padding: 12px 18px;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+      color: white;
+      background: var(--accent);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .button.secondary,
+    button.secondary {
+      color: var(--accent-dark);
+      background: transparent;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .card,
+    .tool,
+    .output {
+      background: rgba(255, 250, 242, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 20px;
+    }
+
+    .tool {
+      margin-top: 32px;
+      background: var(--panel-strong);
+    }
+
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    input[type="file"],
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    .tool-actions {
+      margin-top: 18px;
+    }
+
+    .status {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #f2ece2;
+      color: var(--ink);
+    }
+
+    .status.warn {
+      color: var(--warn);
+      border-color: rgba(146, 64, 14, 0.25);
+      background: #fff4e5;
+    }
+
+    .output-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 16px;
+      background: #f2ece2;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: #24303c;
+      overflow-x: auto;
+      min-height: 220px;
+      max-height: 560px;
+    }
+
+    ul, ol {
+      padding-left: 22px;
+    }
+
+    .footer {
+      margin-top: 32px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+  </style>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>XML Generator</h1>
+      <p class="lead">Upload a TXT or XLSX file that contains XML paths, generate a sample XML document in the browser, preview the output, and download it immediately.</p>
+
+      <div class="actions">
+        <a class="button" href="../generate_sample_xml.ps1">Download PowerShell Script</a>
+        <a class="button secondary" href="../generate_sample_xml_backup.ps1">Download Backup Script</a>
+      </div>
+
+      <div class="grid">
+        <article class="card">
+          <h2>Input</h2>
+          <p>Supported input formats:</p>
+          <ul>
+            <li>TXT: one XML path per line</li>
+            <li>XLSX: paths read from one selected column</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <h2>Output</h2>
+          <p>The generator detects the root from the first valid path, applies common normalization fixes, and creates a downloadable sample XML file.</p>
+        </article>
+
+        <article class="card">
+          <h2>Works On GitHub Pages</h2>
+          <p>This UI runs fully in the browser, so users can upload a file and generate XML without running PowerShell on the website.</p>
+        </article>
+      </div>
+
+      <section class="tool">
+        <h2>Generate XML</h2>
+        <p>Select an input file, set the XLSX column name if needed, then click Generate XML.</p>
+
+        <div class="tool-grid">
+          <div class="field">
+            <label for="inputFile">Input file</label>
+            <input id="inputFile" type="file" accept=".txt,.xlsx">
+          </div>
+
+          <div class="field">
+            <label for="columnName">XLSX column name</label>
+            <input id="columnName" type="text" value="xml path" placeholder="xml path">
+          </div>
+
+          <div class="field">
+            <label for="worksheetName">Worksheet name (optional)</label>
+            <input id="worksheetName" type="text" placeholder="Leave empty for first sheet">
+          </div>
+
+          <div class="field">
+            <label for="downloadName">Download file name</label>
+            <input id="downloadName" type="text" value="generated-sample.xml" placeholder="generated-sample.xml">
+          </div>
+        </div>
+
+        <div class="tool-actions">
+          <button id="generateButton" type="button">Generate XML</button>
+          <button id="downloadButton" class="secondary" type="button" disabled>Download XML</button>
+        </div>
+
+        <div id="statusBox" class="status">No file loaded yet.</div>
+
+        <div class="output-grid">
+          <section class="output">
+            <h3>Generated XML</h3>
+            <pre id="xmlPreview">Generate XML to preview the output here.</pre>
+          </section>
+        </div>
+      </section>
+
+      <h2>How To Publish</h2>
+      <ol>
+        <li>Create a GitHub repository.</li>
+        <li>Upload this <code>docs/index.html</code> file and your PowerShell script.</li>
+        <li>Enable GitHub Pages with source set to the <code>main</code> branch and <code>/docs</code> folder.</li>
+        <li>Open the GitHub Pages URL and use the upload UI directly in the browser.</li>
+      </ol>
+
+      <p class="footer">The browser UI generates XML locally on the user device. The PowerShell script is still available if you want desktop automation.</p>
+    </section>
+  </main>
+
+  <script>
+    const inputFile = document.getElementById("inputFile");
+    const columnName = document.getElementById("columnName");
+    const worksheetName = document.getElementById("worksheetName");
+    const downloadName = document.getElementById("downloadName");
+    const generateButton = document.getElementById("generateButton");
+    const downloadButton = document.getElementById("downloadButton");
+    const statusBox = document.getElementById("statusBox");
+    const xmlPreview = document.getElementById("xmlPreview");
+
+    let generatedXml = "";
+
+    function setStatus(message, isWarn = false) {
+      statusBox.textContent = message;
+      statusBox.className = isWarn ? "status warn" : "status";
+    }
+
+    function normalizeHeader(text) {
+      return (text || "").replace(/\s+/g, "").trim().toLowerCase();
+    }
+
+    function normalizePathLine(line) {
+      let clean = (line || "").trim();
+      clean = clean.replace(/\/px:px:/g, "/px:");
+      clean = clean.replace(/px:\/Shipment/g, "px:Shipment");
+      clean = clean.replace(/(\[[^\]]+\])(?=[A-Za-z_])/g, "$1/");
+      return clean;
+    }
+
+    function splitXmlPathSegments(path) {
+      const segments = [];
+      let current = "";
+      let depth = 0;
+
+      for (const ch of path) {
+        if (ch === "[") {
+          depth += 1;
+          current += ch;
+          continue;
+        }
+
+        if (ch === "]") {
+          depth -= 1;
+          current += ch;
+          continue;
+        }
+
+        if (ch === "/" && depth === 0) {
+          if (current.trim()) {
+            segments.push(current.trim());
+          }
+          current = "";
+          continue;
+        }
+
+        current += ch;
+      }
+
+      if (current.trim()) {
+        segments.push(current.trim());
+      }
+
+      if (depth !== 0) {
+        throw new Error("Unbalanced brackets in path: " + path);
+      }
+
+      return segments;
+    }
+
+    function parseSegment(segment) {
+      const match = segment.match(/^([^\[]+)(\[(.*)\])?$/);
+      if (!match) {
+        throw new Error("Malformed segment: " + segment);
+      }
+
+      const name = match[1].trim();
+      const predicate = match[3] || "";
+      if (!name || /[\[\]@=\s]/.test(name)) {
+        throw new Error("Invalid element name: " + name);
+      }
+
+      const attrs = {};
+      if (predicate) {
+        const quotes = (predicate.match(/"/g) || []).length;
+        if (quotes % 2 !== 0) {
+          throw new Error("Malformed predicate quotes in: " + segment);
+        }
+
+        if (!/\/\s*px:/.test(predicate)) {
+          const attrPattern = /@([\w:]+)\s*=\s*(["'])(.*?)\2/g;
+          let attrMatch;
+          while ((attrMatch = attrPattern.exec(predicate)) !== null) {
+            attrs[attrMatch[1]] = attrMatch[3];
+          }
+
+          if (/@/.test(predicate) && Object.keys(attrs).length === 0) {
+            throw new Error("Unsupported predicate: " + predicate);
+          }
+        }
+      }
+
+      return { name, attrs };
+    }
+
+    function sanitizeChildAttrs(attrs) {
+      const sanitized = {};
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (key === "xmlns" || key.startsWith("xmlns:")) {
+          return;
+        }
+        sanitized[key] = value;
+      });
+      return sanitized;
+    }
+
+    function createNode(name, attrs) {
+      return {
+        name,
+        attrs: { ...attrs },
+        children: [],
+        text: ""
+      };
+    }
+
+    function attrsEqual(left, right) {
+      const leftKeys = Object.keys(left);
+      const rightKeys = Object.keys(right);
+      if (leftKeys.length !== rightKeys.length) {
+        return false;
+      }
+
+      return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key]);
+    }
+
+    function getOrCreateChild(parent, name, attrs) {
+      const existing = parent.children.find((child) => child.name === name && attrsEqual(child.attrs, attrs));
+      if (existing) {
+        return existing;
+      }
+
+      const node = createNode(name, attrs);
+      parent.children.push(node);
+      return node;
+    }
+
+    function escapeXml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+    }
+
+    function buildAttrString(attrs) {
+      const entries = Object.entries(attrs);
+      if (entries.length === 0) {
+        return "";
+      }
+
+      return " " + entries.map(([key, value]) => `${key}="${escapeXml(value)}"`).join(" ");
+    }
+
+    function serializeNode(node, level = 0) {
+      const indent = "  ".repeat(level);
+      const attrString = buildAttrString(node.attrs);
+
+      if (node.children.length === 0) {
+        const text = node.text || "";
+        return `${indent}<${node.name}${attrString}>${escapeXml(text)}</${node.name}>`;
+      }
+
+      const open = `${indent}<${node.name}${attrString}>`;
+      const childLines = node.children.map((child) => serializeNode(child, level + 1));
+      const close = `${indent}</${node.name}>`;
+      return [open, ...childLines, close].join("\n");
+    }
+
+    function sampleValueFor(name) {
+      return /Date|Time/.test(name) ? "2026-05-22T10:30:00Z" : "SAMPLE_VALUE";
+    }
+
+    function createXmlFromLines(lines) {
+      let root = null;
+      let used = 0;
+      let skipped = 0;
+      const malformed = [];
+
+      for (let index = 0; index < lines.length; index += 1) {
+        const lineNo = index + 1;
+        const rawLine = lines[index];
+        if (!rawLine || !String(rawLine).trim()) {
+          skipped += 1;
+          continue;
+        }
+
+        try {
+          const clean = normalizePathLine(String(rawLine));
+          const segments = splitXmlPathSegments(clean).map(parseSegment);
+          if (segments.length === 0) {
+            skipped += 1;
+            continue;
+          }
+
+          if (!root) {
+            root = createNode(segments[0].name, segments[0].attrs);
+          }
+
+          if (segments[0].name !== root.name) {
+            skipped += 1;
+            malformed.push(`Line ${lineNo}: root '${segments[0].name}' does not match detected root '${root.name}'`);
+            continue;
+          }
+
+          let cursor = root;
+          for (let i = 1; i < segments.length; i += 1) {
+            const current = segments[i];
+            cursor = getOrCreateChild(cursor, current.name, sanitizeChildAttrs(current.attrs));
+            if (i === segments.length - 1 && !cursor.text) {
+              cursor.text = sampleValueFor(current.name);
+            }
+          }
+
+          used += 1;
+        } catch (error) {
+          skipped += 1;
+          malformed.push(`Line ${lineNo}: ${error.message}`);
+        }
+      }
+
+      if (!root) {
+        throw new Error("No valid paths found in the uploaded file.");
+      }
+
+      const xml = `<?xml version="1.0" encoding="utf-8"?>\n${serializeNode(root)}`;
+      return { xml, used, skipped, malformed, rootName: root.name };
+    }
+
+    async function extractLinesFromFile(file) {
+      const ext = file.name.toLowerCase().split(".").pop();
+      if (ext === "txt") {
+        const text = await file.text();
+        return text.split(/\r?\n/);
+      }
+
+      if (ext === "xlsx") {
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        const selectedSheet = worksheetName.value.trim();
+        const sheetName = selectedSheet || workbook.SheetNames[0];
+        if (!workbook.SheetNames.includes(sheetName)) {
+          throw new Error(`Worksheet '${sheetName}' was not found.`);
+        }
+
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        if (!rows.length) {
+          throw new Error("No rows found in the selected worksheet.");
+        }
+
+        const wanted = normalizeHeader(columnName.value || "xml path");
+        const headers = Object.keys(rows[0]);
+        const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
+        if (!resolvedHeader) {
+          throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
+        }
+
+        return rows.map((row) => String(row[resolvedHeader] || ""));
+      }
+
+      throw new Error("Unsupported file type. Please upload a .txt or .xlsx file.");
+    }
+
+    generateButton.addEventListener("click", async () => {
+      const file = inputFile.files[0];
+      if (!file) {
+        setStatus("Please choose a TXT or XLSX file first.", true);
+        return;
+      }
+
+      generateButton.disabled = true;
+      downloadButton.disabled = true;
+      generatedXml = "";
+      xmlPreview.textContent = "Working...";
+      setStatus(`Reading ${file.name}...`);
+
+      try {
+        const lines = await extractLinesFromFile(file);
+        const result = createXmlFromLines(lines);
+        generatedXml = result.xml;
+        xmlPreview.textContent = generatedXml;
+        downloadButton.disabled = false;
+
+        let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
+        if (result.malformed.length) {
+          message += ` Warnings: ${result.malformed.slice(0, 3).join(" | ")}`;
+        }
+        setStatus(message, result.malformed.length > 0);
+      } catch (error) {
+        xmlPreview.textContent = "Generation failed.";
+        setStatus(error.message, true);
+      } finally {
+        generateButton.disabled = false;
+      }
+    });
+
+    downloadButton.addEventListener("click", () => {
+      if (!generatedXml) {
+        return;
+      }
+
+      const fileName = (downloadName.value || "generated-sample.xml").trim() || "generated-sample.xml";
+      const blob = new Blob([generatedXml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName.endsWith(".xml") ? fileName : `${fileName}.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
