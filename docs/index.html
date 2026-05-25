@@ -308,8 +308,8 @@
           </div>
 
           <div class="field">
-            <label for="columnName">XLSX column name</label>
-            <input id="columnName" type="text" value="xml path" placeholder="xml path">
+            <label for="columnName">XLSX column name (optional)</label>
+            <input id="columnName" type="text" placeholder="Leave empty to auto-detect">
           </div>
 
           <div class="field">
@@ -389,12 +389,16 @@
     function renderWarnings(items) {
       warningList.innerHTML = "";
       if (!items || items.length === 0) {
-        const li = document.createElement("li");
-        li.textContent = "No warnings.";
-        warningList.appendChild(li);
-        return;
-      }
+        const wanted = normalizeHeader(columnName.value);
+        const columnNameProvided = Boolean(wanted);
 
+        if (columnNameProvided) {
+          const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
+          if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
+            setStatus(`Detected worksheet '${embeddedHeaderMatch.sheetName}', header row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1}.`);
+            return embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value));
+          }
+        }
       items.slice(0, 25).forEach((msg) => {
         const li = document.createElement("li");
         li.textContent = msg;
@@ -405,11 +409,13 @@
     function setStatus(message, isWarn = false) {
       statusBox.textContent = message;
       statusBox.className = isWarn ? "status warn" : "status";
-    }
-
-    function showToast(message) {
-      if (!toast) {
-        return;
+            if (columnNameProvided) {
+              const headers = Object.keys(rows[0]).map((header) => String(header ?? ""));
+              const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
+              if (resolvedHeader) {
+                setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
+                return rows.map((row) => String(row[resolvedHeader] ?? ""));
+              }
       }
 
       if (toastTimer) {
@@ -425,8 +431,13 @@
 
     inputFile.addEventListener("change", () => {
       setSelectedFile(inputFile.files[0] || null);
-    });
+        if (!columnNameProvided) {
+          const headers = Object.keys(selectedRows[0]).map((header) => String(header ?? ""));
+          throw new Error(`Could not auto-detect a path column. Available columns: ${headers.join(", ")}`);
+        }
 
+        const headers = Object.keys(selectedRows[0]).map((header) => String(header ?? ""));
+        throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
     ["dragenter", "dragover"].forEach((eventName) => {
       dropzone.addEventListener(eventName, (event) => {
         event.preventDefault();
