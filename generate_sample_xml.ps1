@@ -389,9 +389,9 @@ function Parse-Segment {
             }
 
             # Support attribute-existence predicates like [@unitCode] by assigning a sample value.
-            $bareAttrMatches = [regex]::Matches($predicate, '@([\w:]+)(?!\s*=)')
-            foreach ($m in $bareAttrMatches) {
-                $attrName = $m.Groups[1].Value
+            $trimmedPredicate = $predicate.Trim()
+            if ($trimmedPredicate -match '^@([\w:]+)$') {
+                $attrName = $Matches[1]
                 if (-not $attrs.ContainsKey($attrName)) {
                     $attrs[$attrName] = 'SAMPLE_VALUE'
                 }

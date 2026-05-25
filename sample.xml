@@ -8,14 +8,14 @@
           <px:ID>SAMPLE_VALUE</px:ID>
         </px:DocumentIDSet>
         <px:CarrierParty>
-          <px:ID typeCode="inttraCompanyID">SAMPLE_VALUE</px:ID>
+          <px:ID typeCode="inttraCompanyID" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ID>
         </px:CarrierParty>
-        <px:Party typeCode="Shipper">
-          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
-          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+        <px:Party typeCode="Shipper" typeCod="SAMPLE_VALUE">
+          <px:Name typeCode="PartyName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ID>
           <px:Location>
             <px:Address>
-              <px:AddressLine typeCode="Address1">SAMPLE_VALUE</px:AddressLine>
+              <px:AddressLine typeCode="Address1" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:AddressLine>
               <px:AddressLine>
                 <px:CityName>SAMPLE_VALUE</px:CityName>
                 <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
@@ -25,12 +25,12 @@
             </px:Address>
           </px:Location>
         </px:Party>
-        <px:Party typeCode="Party1">
-          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
-          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+        <px:Party typeCode="Party1" typeCod="SAMPLE_VALUE">
+          <px:Name typeCode="PartyName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ID>
           <px:Location>
             <px:Address>
-              <px:AddressLine typeCode="Address1">SAMPLE_VALUE</px:AddressLine>
+              <px:AddressLine typeCode="Address1" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:AddressLine>
               <px:AddressLine>
                 <px:CityName>SAMPLE_VALUE</px:CityName>
                 <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
@@ -40,12 +40,12 @@
             </px:Address>
           </px:Location>
         </px:Party>
-        <px:Party typeCode="Party2">
-          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
-          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+        <px:Party typeCode="Party2" typeCod="SAMPLE_VALUE">
+          <px:Name typeCode="PartyName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ID>
           <px:Location>
             <px:Address>
-              <px:AddressLine typeCode="Address1">SAMPLE_VALUE</px:AddressLine>
+              <px:AddressLine typeCode="Address1" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:AddressLine>
               <px:AddressLine>
                 <px:CityName>SAMPLE_VALUE</px:CityName>
                 <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
@@ -55,111 +55,113 @@
             </px:Address>
           </px:Location>
         </px:Party>
-        <px:Party tyepCode="Provider">
+        <px:Party tyepCod="SAMPLE_VALUE" tyepCode="Provider">
           <ID xmlns="urn:px">SAMPLE_VALUE</ID>
         </px:Party>
-        <px:DocumentReference typeCode="ContractNumber">
+        <px:DocumentReference typeCode="ContractNumber" typeCod="SAMPLE_VALUE">
           <ID xmlns="urn:px">SAMPLE_VALUE</ID>
         </px:DocumentReference>
       </px:ShipmentHeader>
       <px:ShipmentUnit>
         <px:DocumentReferences>
-          <px:DocumentReference typeCode="BookingNumber">
+          <px:DocumentReference typeCode="BookingNumber" typeCod="SAMPLE_VALUE">
             <px:ID>SAMPLE_VALUE</px:ID>
           </px:DocumentReference>
-          <px:DocumentReference typeCode="ShipmentID">
+          <px:DocumentReference typeCode="ShipmentID" typeCod="SAMPLE_VALUE">
             <px:ID>SAMPLE_VALUE</px:ID>
           </px:DocumentReference>
-          <px:DocumentReference typeCode="MasterBOL">
+          <px:DocumentReference typeCode="MasterBOL" typeCod="SAMPLE_VALUE">
             <px:ID>SAMPLE_VALUE</px:ID>
           </px:DocumentReference>
-          <px:DocumentReference typeCode="CustomerReference">
+          <px:DocumentReference typeCode="CustomerReference" typeCod="SAMPLE_VALUE">
             <px:ID>SAMPLE_VALUE</px:ID>
           </px:DocumentReference>
-          <px:DocumentReference typeCode="DepartmentNumberReference">
+          <px:DocumentReference typeCode="DepartmentNumberReference" typeCod="SAMPLE_VALUE">
             <px:ID>SAMPLE_VALUE</px:ID>
           </px:DocumentReference>
           <px:DocumentReference>
-            <px:Extension typeCode="CustomDetails">
-              <px:Number typeCode="CustomReferenceNumber">SAMPLE_VALUE</px:Number>
+            <px:Extension typeCode="CustomDetails" typeCod="SAMPLE_VALUE">
+              <px:Number typeCode="CustomReferenceNumber" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Number>
             </px:Extension>
-            <px:Extension typeCode="SupplierExport">
-              <px:Text typeCode="SupplierExportDeclaration">SAMPLE_VALUE</px:Text>
+            <px:Extension typeCode="SupplierExport" typeCod="SAMPLE_VALUE">
+              <px:Text typeCode="SupplierExportDeclaration" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Text>
             </px:Extension>
-            <px:Extension typeCode="DutyTaxes">
-              <px:Text typeCode="DutyTaxes">SAMPLE_VALUE</px:Text>
+            <px:Extension typeCode="DutyTaxes" typeCod="SAMPLE_VALUE">
+              <px:Text typeCode="DutyTaxes" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Text>
             </px:Extension>
           </px:DocumentReference>
         </px:DocumentReferences>
-        <px:TransportStep typeCode="MainStageTransportPlan">
+        <px:TransportStep typeCode="MainStageTransportPlan" typeCod="SAMPLE_VALUE">
           <px:CarrierRouteReference>
-            <px:Extension typeCode="TransportDetails">
-              <px:ValueText typeCode="TransportMode">SAMPLE_VALUE</px:ValueText>
+            <px:Extension typeCode="TransportDetails" typeCod="SAMPLE_VALUE">
+              <px:ValueText typeCode="TransportMode" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ValueText>
             </px:Extension>
           </px:CarrierRouteReference>
-          <px:Location typeCode="PlaceOfReceipt">
-            <px:ID typeCode="UNLocationCode">SAMPLE_VALUE</px:ID>
-            <px:Description typeCode="LocationLiteral">SAMPLE_VALUE</px:Description>
-            <px:Extension typeCode="PlaceOfReceiptDetails">
-              <px:DateTime typeCode="CarrierPickupDate">2026-05-22T10:30:00Z</px:DateTime>
+          <px:Location typeCode="PlaceOfReceipt" typeCod="SAMPLE_VALUE">
+            <px:ID typeCode="UNLocationCode" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ID>
+            <px:Description typeCode="LocationLiteral" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Description>
+            <px:Extension typeCode="PlaceOfReceiptDetails" typeCod="SAMPLE_VALUE">
+              <px:DateTime typeCode="CarrierPickupDate" typeCod="SAMPLE_VALUE">2026-05-22T10:30:00Z</px:DateTime>
             </px:Extension>
           </px:Location>
-          <px:Location typeCode="PlaceOfDelivery">
-            <px:ID typeCode="UNLocationCode">SAMPLE_VALUE</px:ID>
-            <px:Description typeCode="LocationLiteral">SAMPLE_VALUE</px:Description>
-            <px:Address typeCode="PlaceOfDeliveryLocation">
+          <px:Location typeCode="PlaceOfDelivery" typeCod="SAMPLE_VALUE">
+            <px:ID typeCode="UNLocationCode" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ID>
+            <px:Description typeCode="LocationLiteral" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Description>
+            <px:Address typeCode="PlaceOfDeliveryLocation" typeCod="SAMPLE_VALUE">
               <px:CityName>SAMPLE_VALUE</px:CityName>
               <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
               <px:CountryCode>SAMPLE_VALUE</px:CountryCode>
               <px:PostalCode>SAMPLE_VALUE</px:PostalCode>
             </px:Address>
-            <px:Extension typeCode="PlaceOfDeliveryDetails">
-              <px:DateTime typeCode="EstimatedDeliveryDate">2026-05-22T10:30:00Z</px:DateTime>
+            <px:Extension typeCode="PlaceOfDeliveryDetails" typeCod="SAMPLE_VALUE">
+              <px:DateTime typeCode="EstimatedDeliveryDate" typeCod="SAMPLE_VALUE">2026-05-22T10:30:00Z</px:DateTime>
             </px:Extension>
-            <px:Coordinate typeCode="GeoCoordinate">
+            <px:Coordinate typeCode="GeoCoordinate" typeCod="SAMPLE_VALUE">
               <px:LongitudeMeasure>SAMPLE_VALUE</px:LongitudeMeasure>
               <px:LatitudeMeasure>SAMPLE_VALUE</px:LatitudeMeasure>
             </px:Coordinate>
           </px:Location>
           <CarrierRouteReference xmlns="urn:px">
             <ID>SAMPLE_VALUE</ID>
-            <Extension typeCode="TransportDetails">
-              <Name typeCode="ConveyanceName">SAMPLE_VALUE</Name>
-              <Name typeCode="vehicleName">SAMPLE_VALUE</Name>
+            <Extension typeCode="TransportDetails" typeCod="SAMPLE_VALUE">
+              <Name typeCode="ConveyanceName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</Name>
+              <Name typeCode="vehicleName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</Name>
             </Extension>
           </CarrierRouteReference>
         </px:TransportStep>
         <px:Status>
           <px:Code>SAMPLE_VALUE</px:Code>
-          <px:Extension typeCode="StatusEventDetails">
-            <px:DateTime typeCode="EventDate">2026-05-22T10:30:00Z</px:DateTime>
-            <px:ValueText typeCode="EventDateFormat">SAMPLE_VALUE</px:ValueText>
-            <px:ValueText typeCode="EventDateTimezone">SAMPLE_VALUE</px:ValueText>
-            <px:Text typeCode="EventPhase">SAMPLE_VALUE</px:Text>
-            <px:ValueText typeCode="EventUNLocationCode">SAMPLE_VALUE</px:ValueText>
-            <px:Name typeCode="EventCityName">SAMPLE_VALUE</px:Name>
-            <px:Name typeCode="EventSubdivisionName">SAMPLE_VALUE</px:Name>
+          <px:Extension typeCode="StatusEventDetails" typeCod="SAMPLE_VALUE">
+            <px:DateTime typeCode="EventDate" typeCod="SAMPLE_VALUE">2026-05-22T10:30:00Z</px:DateTime>
+            <px:ValueText typeCode="EventDateFormat" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ValueText>
+            <px:ValueText typeCode="EventDateTimezone" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ValueText>
+            <px:Text typeCode="EventPhase" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Text>
+            <px:ValueText typeCode="EventUNLocationCode" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ValueText>
+            <px:Name typeCode="EventCityName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Name>
+            <px:Name typeCode="EventSubdivisionName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Name>
           </px:Extension>
           <px:ReasonCode>SAMPLE_VALUE</px:ReasonCode>
-          <px:Extension typeCode="StatusEventDetails">
-            <px:ValueText typeCode="EventCountryCode">SAMPLE_VALUE</px:ValueText>
+          <px:Extension typeCode="StatusEventDetails" typeCod="SAMPLE_VALUE">
+            <px:ValueText typeCode="EventCountryCode" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ValueText>
           </px:Extension>
         </px:Status>
-        <px:ContainerID typeCode="ActualContainerNumber">SAMPLE_VALUE</px:ContainerID>
+        <px:ContainerID typeCode="ActualContainerNumber" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:ContainerID>
         <px:CarrierParty>
-          <px:Name typeCode="CarrierName">SAMPLE_VALUE</px:Name>
+          <px:Name typeCode="CarrierName" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Name>
         </px:CarrierParty>
         <px:TransportationTerm>
           <px:ShipmentServiceLevelCode>SAMPLE_VALUE</px:ShipmentServiceLevelCode>
         </px:TransportationTerm>
         <px:Dimensions>
+          <px:GrossWeightMeasure unitCode="SAMPLE_VALUE">SAMPLE_VALUE</px:GrossWeightMeasure>
           <px:GrossWeightMeasure>SAMPLE_VALUE</px:GrossWeightMeasure>
+          <px:VolumeMeasure unitCode="SAMPLE_VALUE">SAMPLE_VALUE</px:VolumeMeasure>
           <px:VolumeMeasure>SAMPLE_VALUE</px:VolumeMeasure>
         </px:Dimensions>
-        <px:Quantity typeCode="CarrierPackages">SAMPLE_VALUE</px:Quantity>
-        <px:Quantity typeCode="CLRQuantity">SAMPLE_VALUE</px:Quantity>
-        <px:Note typeCode="ProofOfDeliveryVerification">SAMPLE_VALUE</px:Note>
-        <px:Note typeCode="Comment">SAMPLE_VALUE</px:Note>
+        <px:Quantity typeCode="CarrierPackages" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Quantity>
+        <px:Quantity typeCode="CLRQuantity" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Quantity>
+        <px:Note typeCode="ProofOfDeliveryVerification" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Note>
+        <px:Note typeCode="Comment" typeCod="SAMPLE_VALUE">SAMPLE_VALUE</px:Note>
       </px:ShipmentUnit>
     </px:Shipment>
   </px:DataArea>
