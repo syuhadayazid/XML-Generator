@@ -354,6 +354,9 @@ function Parse-Segment {
     }
 
     $name = $Matches[1].Trim()
+    while ($name -match '(^|:)px:px:') {
+        $name = $name -replace '(^|:)px:px:', '$1px:'
+    }
     $predicate = $Matches[3]
 
     if ([string]::IsNullOrWhiteSpace($name) -or ($name -match '[\[\]@=\s]')) {
@@ -599,6 +602,40 @@ function Merge-PartySiblingsByTypeCode {
     }
 }
 
+function Wrap-ShipmentUnitDocumentReferences {
+    param([System.Xml.XmlElement]$parent)
+
+    for ($idx = 0; $idx -lt $parent.ChildNodes.Count; $idx++) {
+        $child = $parent.ChildNodes.Item($idx)
+        if ($child.NodeType -eq [System.Xml.XmlNodeType]::Element) {
+            Wrap-ShipmentUnitDocumentReferences -parent $child
+        }
+    }
+
+    if ($parent.LocalName -ne 'ShipmentUnit') {
+        return
+    }
+
+    $docRefs = @($parent.ChildNodes | Where-Object { $_.NodeType -eq [System.Xml.XmlNodeType]::Element -and $_.LocalName -eq 'DocumentReference' })
+    if ($docRefs.Count -eq 0) {
+        return
+    }
+
+    $firstDocRef = [System.Xml.XmlElement]$docRefs[0]
+    $wrapper = New-ElementFromSpec -doc $parent.OwnerDocument -fullName 'px:DocumentReferences' -attributes @{} -nsValue $parent.NamespaceURI
+
+    $null = $parent.InsertBefore($wrapper, $firstDocRef)
+
+    foreach ($sourceNode in $docRefs) {
+        $imported = $parent.OwnerDocument.ImportNode($sourceNode, $true)
+        $null = $wrapper.AppendChild($imported)
+    }
+
+    foreach ($sourceNode in $docRefs) {
+        $null = $parent.RemoveChild($sourceNode)
+    }
+}
+
 for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     $lineNo = $lineIndex + 1
     $line = $lines[$lineIndex]
@@ -609,9 +646,12 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     }
 
     $clean = $line.Trim()
-    $clean = $clean -replace '/px:px:', '/px:'
+    while ($clean -match '(^|/)px:px:') {
+        $clean = $clean -replace '(^|/)px:px:', '$1px:'
+    }
     $clean = $clean -replace 'px:/Shipment', 'px:Shipment'
-    $clean = [regex]::Replace($clean, '(?<=[A-Za-z0-9_\]])(px:)', '/$1')
+    $clean = $clean -replace 'px:/', 'px:'
+    $clean = [regex]::Replace($clean, '(?<=[A-Za-z0-9_\]])(px:)(?=[A-Za-z_])', '/$1')
     # Fix common malformed pattern: "]TagName" should be "]/TagName".
     $clean = [regex]::Replace($clean, '(\[[^\]]+\])(?=[A-Za-z_])', '$1/')
 
@@ -721,6 +761,7 @@ if (-not $root) {
 }
 
 Merge-PartySiblingsByTypeCode -parent $root
+Wrap-ShipmentUnitDocumentReferences -parent $root
 Merge-DuplicateSiblings -parent $root
 
 $settings = New-Object System.Xml.XmlWriterSettings
