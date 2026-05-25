@@ -553,7 +553,7 @@
           columnIndex,
           values,
           pathLikeCount,
-          score: values.length + (pathLikeCount * 2)
+          score: (pathLikeCount * 1000) + values.length
         };
 
         if (!bestMatch || candidate.score > bestMatch.score) {
