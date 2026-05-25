@@ -1,6 +1,6 @@
-$inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\notifyshipmentXMLpath.xlsx"
-$outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\notifyshipmentoutput.xml"
-$xlsxPathColumn = "xml path"
+$inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\xmlpath.txt"
+$outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
+$xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
 $xlsxWorksheetName = $null
 $outputDir = Split-Path -Parent $outputPath
 
@@ -38,15 +38,166 @@ function Get-InputLines {
             Import-Module ImportExcel -ErrorAction Stop
         }
 
-        try {
-            if ([string]::IsNullOrWhiteSpace($worksheetName)) {
-                $rows = Import-Excel -Path $sourcePath
-            } else {
-                $rows = Import-Excel -Path $sourcePath -WorksheetName $worksheetName
+        function Import-XlsxRows {
+            param(
+                [string]$xlsxPath,
+                [string]$sheetName
+            )
+
+            try {
+                if ([string]::IsNullOrWhiteSpace($sheetName)) {
+                    return @{ Rows = @(Import-Excel -Path $xlsxPath); UsedNoHeader = $false }
+                }
+
+                return @{ Rows = @(Import-Excel -Path $xlsxPath -WorksheetName $sheetName); UsedNoHeader = $false }
+            } catch {
+                if ($_.Exception.Message -notmatch "No column headers found on top row") {
+                    throw
+                }
+
+                if ([string]::IsNullOrWhiteSpace($sheetName)) {
+                    return @{ Rows = @(Import-Excel -Path $xlsxPath -NoHeader); UsedNoHeader = $true }
+                }
+
+                return @{ Rows = @(Import-Excel -Path $xlsxPath -WorksheetName $sheetName -NoHeader); UsedNoHeader = $true }
             }
+        }
+
+        function Find-EmbeddedHeaderValues {
+            param(
+                [string]$xlsxPath,
+                [string]$sheetName,
+                [scriptblock]$normalizeFn,
+                [string]$normalizedHeader
+            )
+
+            $searchPath = $xlsxPath
+            $tempSearchPath = $null
+
+            try {
+                if ([string]::IsNullOrWhiteSpace($sheetName)) {
+                    $null = Get-ExcelSheetInfo -Path $searchPath
+                }
+            } catch {
+                $tempSearchPath = Join-Path ([System.IO.Path]::GetTempPath()) ("xmlgen-header-" + [System.Guid]::NewGuid().ToString() + ".xlsx")
+                Copy-Item -LiteralPath $xlsxPath -Destination $tempSearchPath -Force -ErrorAction Stop
+                $searchPath = $tempSearchPath
+            }
+
+            $sheetNames = @()
+            if ([string]::IsNullOrWhiteSpace($sheetName)) {
+                $sheetNames = @((Get-ExcelSheetInfo -Path $searchPath).Name)
+            } else {
+                $sheetNames = @($sheetName)
+            }
+
+            try {
+                $bestMatch = $null
+                foreach ($candidateSheet in $sheetNames) {
+                    try {
+                        $rawRows = @(Import-Excel -Path $searchPath -WorksheetName $candidateSheet -NoHeader)
+                    } catch {
+                        continue
+                    }
+
+                    if (-not $rawRows -or $rawRows.Count -eq 0) {
+                        continue
+                    }
+
+                    $props = @($rawRows[0].PSObject.Properties.Name)
+                    $matches = New-Object System.Collections.Generic.List[object]
+                    for ($rowIndex = 0; $rowIndex -lt $rawRows.Count; $rowIndex++) {
+                        foreach ($prop in $props) {
+                            $cellValue = [string]$rawRows[$rowIndex].$prop
+                            if ((& $normalizeFn $cellValue) -eq $normalizedHeader) {
+                                $matches.Add([pscustomobject]@{ RowIndex = $rowIndex; Column = $prop })
+                            }
+                        }
+                    }
+
+                    foreach ($match in $matches) {
+                        $values = New-Object System.Collections.Generic.List[string]
+                        $pathLikeCount = 0
+                        for ($dataIndex = ($match.RowIndex + 1); $dataIndex -lt $rawRows.Count; $dataIndex++) {
+                            $value = [string]$rawRows[$dataIndex].$($match.Column)
+                            if ([string]::IsNullOrWhiteSpace($value)) {
+                                continue
+                            }
+
+                            $trimmed = $value.Trim()
+                            $values.Add($trimmed)
+                            if ($trimmed -match '^\s*/?[A-Za-z_][\w:\-]*(/|\[)') {
+                                $pathLikeCount++
+                            }
+                        }
+
+                        if ($values.Count -eq 0) {
+                            continue
+                        }
+
+                        $candidate = [pscustomobject]@{
+                            Sheet = $candidateSheet
+                            RowNumber = $match.RowIndex + 1
+                            Column = $match.Column
+                            Values = @($values)
+                            PathLikeCount = $pathLikeCount
+                            Score = ($pathLikeCount * 2) + $values.Count
+                        }
+
+                        if (-not $bestMatch -or $candidate.Score -gt $bestMatch.Score) {
+                            $bestMatch = $candidate
+                        }
+                    }
+                }
+
+                return $bestMatch
+            } finally {
+                if ($tempSearchPath -and (Test-Path -LiteralPath $tempSearchPath)) {
+                    Remove-Item -LiteralPath $tempSearchPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        $rows = $null
+        $directReadError = $null
+        $usedNoHeader = $false
+        try {
+            $importResult = Import-XlsxRows -xlsxPath $sourcePath -sheetName $worksheetName
+            $rows = @($importResult.Rows)
+            $usedNoHeader = [bool]$importResult.UsedNoHeader
         } catch {
-            Write-Error "Unable to read XLSX '$sourcePath'. Close the file in Excel and try again. Details: $($_.Exception.Message)"
-            exit 1
+            $directReadError = $_.Exception.Message
+        }
+
+        if (-not $rows -or $rows.Count -eq 0) {
+            $tempXlsxPath = Join-Path ([System.IO.Path]::GetTempPath()) ("xmlgen-" + [System.Guid]::NewGuid().ToString() + ".xlsx")
+            $tempReadError = $null
+
+            try {
+                Copy-Item -LiteralPath $sourcePath -Destination $tempXlsxPath -Force -ErrorAction Stop
+                $importResult = Import-XlsxRows -xlsxPath $tempXlsxPath -sheetName $worksheetName
+                $rows = @($importResult.Rows)
+                $usedNoHeader = [bool]$importResult.UsedNoHeader
+            } catch {
+                $tempReadError = $_.Exception.Message
+            } finally {
+                if (Test-Path -LiteralPath $tempXlsxPath) {
+                    Remove-Item -LiteralPath $tempXlsxPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+
+            if (-not $rows -or $rows.Count -eq 0) {
+                $detail = "direct read failed"
+                if (-not [string]::IsNullOrWhiteSpace($directReadError)) {
+                    $detail += ": $directReadError"
+                }
+                if (-not [string]::IsNullOrWhiteSpace($tempReadError)) {
+                    $detail += " | temp-copy read failed: $tempReadError"
+                }
+
+                Write-Error "Unable to read XLSX '$sourcePath'. Close the file in Excel or wait for OneDrive sync, then retry. Details: $detail"
+                exit 1
+            }
         }
 
         if (-not $rows -or $rows.Count -eq 0) {
@@ -66,6 +217,46 @@ function Get-InputLines {
             if ((& $normalize $prop) -eq $targetNormalized) {
                 $resolvedColumn = $prop
                 break
+            }
+        }
+
+        if (-not $resolvedColumn) {
+            $embeddedHeaderMatch = Find-EmbeddedHeaderValues -xlsxPath $sourcePath -sheetName $worksheetName -normalizeFn $normalize -normalizedHeader $targetNormalized
+            if ($embeddedHeaderMatch) {
+                Write-Warning "Detected embedded header '$pathColumn' on worksheet '$($embeddedHeaderMatch.Sheet)' row $($embeddedHeaderMatch.RowNumber), column '$($embeddedHeaderMatch.Column)'."
+                return @($embeddedHeaderMatch.Values | Where-Object { $_ -match '^\s*/?[A-Za-z_][\w:\-]*(/|\[)' })
+            }
+        }
+
+        if (-not $resolvedColumn -and $usedNoHeader) {
+            $bestColumn = $null
+            $bestScore = -1
+
+            foreach ($prop in $firstRowProps) {
+                $nonEmptyCount = 0
+                $pathLikeCount = 0
+                foreach ($row in $rows) {
+                    $value = [string]$row.$prop
+                    if ([string]::IsNullOrWhiteSpace($value)) {
+                        continue
+                    }
+
+                    $nonEmptyCount++
+                    if ($value -match "^\s*/?[A-Za-z_][\w:\-]*(/|\[)") {
+                        $pathLikeCount++
+                    }
+                }
+
+                $score = ($pathLikeCount * 2) + $nonEmptyCount
+                if ($score -gt $bestScore) {
+                    $bestScore = $score
+                    $bestColumn = $prop
+                }
+            }
+
+            if ($bestColumn) {
+                $resolvedColumn = $bestColumn
+                Write-Warning "No header row detected in XLSX. Using detected path column '$resolvedColumn'."
             }
         }
 
@@ -208,13 +399,25 @@ function New-ElementFromSpec {
 
     $parts = $fullName.Split(':')
     if ($parts.Count -eq 2) {
-        $node = $doc.CreateElement($parts[0], $parts[1], $nsValue)
-    } else {
-        if ([string]::IsNullOrWhiteSpace($nsValue)) {
-            $node = $doc.CreateElement($fullName)
-        } else {
-            $node = $doc.CreateElement($fullName, $nsValue)
+        if ([string]::IsNullOrWhiteSpace($parts[0]) -or [string]::IsNullOrWhiteSpace($parts[1]) -or $parts[1] -match '[@\s]') {
+            throw "Invalid element name '$fullName'"
         }
+    } elseif ($fullName -match ':' -or [string]::IsNullOrWhiteSpace($fullName) -or $fullName -match '[@\s]') {
+        throw "Invalid element name '$fullName'"
+    }
+
+    try {
+        if ($parts.Count -eq 2) {
+            $node = $doc.CreateElement($parts[0], $parts[1], $nsValue)
+        } else {
+            if ([string]::IsNullOrWhiteSpace($nsValue)) {
+                $node = $doc.CreateElement($fullName)
+            } else {
+                $node = $doc.CreateElement($fullName, $nsValue)
+            }
+        }
+    } catch {
+        throw "Invalid element name '$fullName'"
     }
 
     foreach ($k in $attributes.Keys) {
@@ -408,6 +611,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     $clean = $line.Trim()
     $clean = $clean -replace '/px:px:', '/px:'
     $clean = $clean -replace 'px:/Shipment', 'px:Shipment'
+    $clean = [regex]::Replace($clean, '(?<=[A-Za-z0-9_\]])(px:)', '/$1')
     # Fix common malformed pattern: "]TagName" should be "]/TagName".
     $clean = [regex]::Replace($clean, '(\[[^\]]+\])(?=[A-Za-z_])', '$1/')
 

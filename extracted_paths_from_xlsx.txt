@@ -1,0 +1,71 @@
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:DocumentDateTime
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:DocumentIDSet[/px:@typeCode = "TRANSPORT_ORDER_NO"]/px:ID[/px:@typeCode = "TRANSPORT_ORDER_NO"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference[@typeCode='BookingNumber']/px:ID
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference[@typeCode='ShipmentID']/px:ID
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:CarrierParty/px:ID[@typeCode='inttraCompanyID']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:CarrierRouteReference/px:Extension[@typeCode='TransportDetails']/px:ValueText[@typeCode='TransportMode']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Code
+/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:DateTime[@typeCode='EventDate]
+/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:ValueText[@typeCode='EventDateFormat']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:ValueText[@typeCode='EventDateTimezone']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:ContainerID[@typeCode='ActualContainerNumber']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:Text[@typeCode='EventPhase']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:ValueText[@typeCode='EventUNLocationCode']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:CarrierParty/px:Name[@typeCode='CarrierName']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference[@typeCode='MasterBOL']/px:ID
+/px:NotifyShipment/px:DataArea/px:NotifyShipment/px:DataAreapx:/Shipment/px:ShipmentUnit/px:TransportationTerm/px:ShipmentServiceLevelCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode ="MainStageTransportPlan"]/px:Location[@typeCode ="PlaceOfReceipt"]/px:ID[@typeCode = "UNLocationCode"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode ="MainStageTransportPlan"]/px:Location[@typeCode ="PlaceOfReceipt"]/px:Description[@typeCode = "LocationLiteral"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode ="MainStageTransportPlan"]/px:Location[@typeCode ="PlaceOfDelivery"]/px:ID[@typeCode = "UNLocationCode"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode ="MainStageTransportPlan"]/px:Location[@typeCode ="PlaceOfDelivery"]/px:Description[@typeCode = "LocationLiteral"]
+/px:px:NotifyShipment/px:px:DataArea/px:px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Address[@typeCode='PlaceOfDeliveryLocation']/px:CityName
+/px:px:NotifyShipment/px:px:DataArea/px:px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Address[@typeCode='PlaceOfDeliveryLocation']/px:CountrySubDivisionCode
+/px:px:NotifyShipment/px:px:DataArea/px:px:Shipment/px:/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Address[@typeCode='PlaceOfDeliveryLocation']/px:CountryCode
+/px:px:NotifyShipment/px:px:DataArea/px:px:Shipment/px:/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Address[@typeCode='PlaceOfDeliveryLocation']/px:PostalCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeaderpx:/Party[@typeCode='Shipper']/px:Name[@typeCode='PartyName']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode='Shipper']/px:ID[@typeCode='INTTRACompanyID']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Shipper"]/px:Location/px:Address/px:AddressLine[@typeCode = "Address1"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Shipper"]/px:Location/px:Address/px:AddressLine/px:CityName
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Shipper"]/px:Location/px:Address/px:AddressLine/px:CountrySubDivisionCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Shipper"]/px:Location/px:Address/px:AddressLine/px:PostalCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Shipper"]/px:Location/px:Address/px:AddressLine/px:CountryCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode='Party1']/px:Name[@typeCode='PartyName']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode='Party1']/px:ID[@typeCode='INTTRACompanyID']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party1"]/px:Location/px:Address/px:AddressLine[@typeCode = "Address1"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party1"]/px:Location/px:Address/px:AddressLine/px:CityName
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party1"]/px:Location/px:Address/px:AddressLine/px:CountrySubDivisionCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party1"]/px:Location/px:Address/px:AddressLine/px:PostalCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party1"]/px:Location/px:Address/px:AddressLine/px:CountryCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode='Party2']/px:Name[@typeCode='PartyName']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode='Party2']/px:ID[@typeCode='INTTRACompanyID']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party2"]/px:Location/px:Address/px:AddressLine[@typeCode = "Address1"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party2"]/px:Location/px:Address/px:AddressLine/px:CityName
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party2"]/px:Location/px:Address/px:AddressLine/px:CountrySubDivisionCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party2"]/px:Location/px:Address/px:AddressLine/px:PostalCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentHeader/px:Party[@typeCode ="Party2"]/px:Location/px:Address/px:AddressLine/px:CountryCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Dimensions/px:GrossWeightMeasure/px:@unitCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Dimensions/px:GrossWeightMeasure
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Quantity[@typeCode ="CarrierPackages"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Quantity[@typeCode ="CLRQuantity"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Dimensions/px:VolumeMeasure/px:@unitCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Dimensions/px:VolumeMeasure
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Extension[@typeCode='PlaceOfDeliveryDetails']/px:DateTime[@typeCode='EstimatedDeliveryDate']
+/NotifyShipment/DataArea/Shipment/ShipmentHeader/Party[@tyepCode='Provider']/ID
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:ReasonCode
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:Name[@typeCode='EventCityName']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:Name[@typeCode='EventSubdivisionName']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Status/px:Extension[@typeCode='StatusEventDetails']/px:ValueText[@typeCode='EventCountryCode']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Coordinate[@typeCode='GeoCoordinate']/px:LongitudeMeasure
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfDelivery']/px:Coordinate[@typeCode='GeoCoordinate']/px:LatitudeMeasure
+/Shipment/ShipmentUnit/Note[@typeCode='ProofOfDeliveryVerification']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference[@typeCode='CustomerReference']/px:ID
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference[@typeCode='DepartmentNumberReference']/px:ID
+/Shipment/ShipmentUnit/TransportStep[@typeCode='MainStageTransportPlan']/CarrierRouteReference/ID
+/Shipment/ShipmentUnit/TransportStep[@typeCode='MainStageTransportPlan']/CarrierRouteReference/Extension[@typeCode='TransportDetails']/Name[@typeCode='ConveyanceName']
+/Shipment/ShipmentUnit/TransportStep[@typeCode='MainStageTransportPlan']/CarrierRouteReference/Extension[@typeCode='TransportDetails']/Name[@typeCode='vehicleName']
+/Shipment/ShipmentHeader/DocumentReference[@typeCode='ContractNumber']/ID
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference/px:Extension[@typeCode='CustomDetails']/px:Number[@typeCode='CustomReferenceNumber']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:Note[@typeCode = "Comment"]
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference/px:Extension[@typeCode='SupplierExport']/px:Text[@typeCode='SupplierExportDeclaration']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:DocumentReference/px:Extension[@typeCode='DutyTaxes']/px:Text[@typeCode='DutyTaxes']
+/px:NotifyShipment/px:DataArea/px:Shipment/px:ShipmentUnit/px:TransportStep[@typeCode='MainStageTransportPlan']/px:Location[@typeCode='PlaceOfReceipt']/px:Extension[@typeCode='PlaceOfReceiptDetails']/px:DateTime[@typeCode='CarrierPickupDate']

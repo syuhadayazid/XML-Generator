@@ -1,0 +1,143 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<px:NotifyShipment>
+  <px:DataArea>
+    <px:Shipment>
+      <px:ShipmentHeader>
+        <px:DocumentDateTime>2026-05-22T10:30:00Z</px:DocumentDateTime>
+        <px:DocumentIDSet>
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentIDSet>
+        <px:CarrierParty>
+          <px:ID typeCode="inttraCompanyID">SAMPLE_VALUE</px:ID>
+        </px:CarrierParty>
+        <px:Party typeCode="Shipper">
+          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+          <px:Location>
+            <px:Address>
+              <px:AddressLine typeCode="Address1">SAMPLE_VALUE</px:AddressLine>
+              <px:AddressLine>
+                <px:CityName>SAMPLE_VALUE</px:CityName>
+                <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
+                <px:PostalCode>SAMPLE_VALUE</px:PostalCode>
+                <px:CountryCode>SAMPLE_VALUE</px:CountryCode>
+              </px:AddressLine>
+            </px:Address>
+          </px:Location>
+        </px:Party>
+        <px:Party typeCode="Party1">
+          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+          <px:Location>
+            <px:Address>
+              <px:AddressLine typeCode="Address1">SAMPLE_VALUE</px:AddressLine>
+              <px:AddressLine>
+                <px:CityName>SAMPLE_VALUE</px:CityName>
+                <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
+                <px:PostalCode>SAMPLE_VALUE</px:PostalCode>
+                <px:CountryCode>SAMPLE_VALUE</px:CountryCode>
+              </px:AddressLine>
+            </px:Address>
+          </px:Location>
+        </px:Party>
+        <px:Party typeCode="Party2">
+          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+          <px:Location>
+            <px:Address>
+              <px:AddressLine typeCode="Address1">SAMPLE_VALUE</px:AddressLine>
+              <px:AddressLine>
+                <px:CityName>SAMPLE_VALUE</px:CityName>
+                <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
+                <px:PostalCode>SAMPLE_VALUE</px:PostalCode>
+                <px:CountryCode>SAMPLE_VALUE</px:CountryCode>
+              </px:AddressLine>
+            </px:Address>
+          </px:Location>
+        </px:Party>
+      </px:ShipmentHeader>
+      <px:ShipmentUnit>
+        <px:DocumentReference typeCode="BookingNumber">
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentReference>
+        <px:DocumentReference typeCode="ShipmentID">
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentReference>
+        <px:TransportStep typeCode="MainStageTransportPlan">
+          <px:CarrierRouteReference>
+            <px:Extension typeCode="TransportDetails">
+              <px:ValueText typeCode="TransportMode">SAMPLE_VALUE</px:ValueText>
+            </px:Extension>
+          </px:CarrierRouteReference>
+          <px:Location typeCode="PlaceOfReceipt">
+            <px:ID typeCode="UNLocationCode">SAMPLE_VALUE</px:ID>
+            <px:Description typeCode="LocationLiteral">SAMPLE_VALUE</px:Description>
+            <px:Extension typeCode="PlaceOfReceiptDetails">
+              <px:DateTime typeCode="CarrierPickupDate">2026-05-22T10:30:00Z</px:DateTime>
+            </px:Extension>
+          </px:Location>
+          <px:Location typeCode="PlaceOfDelivery">
+            <px:ID typeCode="UNLocationCode">SAMPLE_VALUE</px:ID>
+            <px:Description typeCode="LocationLiteral">SAMPLE_VALUE</px:Description>
+            <px:Address typeCode="PlaceOfDeliveryLocation">
+              <px:CityName>SAMPLE_VALUE</px:CityName>
+              <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
+            </px:Address>
+            <px:Extension typeCode="PlaceOfDeliveryDetails">
+              <px:DateTime typeCode="EstimatedDeliveryDate">2026-05-22T10:30:00Z</px:DateTime>
+            </px:Extension>
+            <px:Coordinate typeCode="GeoCoordinate">
+              <px:LongitudeMeasure>SAMPLE_VALUE</px:LongitudeMeasure>
+              <px:LatitudeMeasure>SAMPLE_VALUE</px:LatitudeMeasure>
+            </px:Coordinate>
+          </px:Location>
+        </px:TransportStep>
+        <px:Status>
+          <px:Code>SAMPLE_VALUE</px:Code>
+          <px:Extension typeCode="StatusEventDetails">
+            <px:ValueText typeCode="EventDateTimezone">SAMPLE_VALUE</px:ValueText>
+            <px:Text typeCode="EventPhase">SAMPLE_VALUE</px:Text>
+            <px:ValueText typeCode="EventUNLocationCode">SAMPLE_VALUE</px:ValueText>
+            <px:Name typeCode="EventCityName">SAMPLE_VALUE</px:Name>
+            <px:Name typeCode="EventSubdivisionName">SAMPLE_VALUE</px:Name>
+          </px:Extension>
+          <px:ReasonCode>SAMPLE_VALUE</px:ReasonCode>
+          <px:Extension typeCode="StatusEventDetails">
+            <px:ValueText typeCode="EventCountryCode">SAMPLE_VALUE</px:ValueText>
+          </px:Extension>
+        </px:Status>
+        <px:ContainerID typeCode="ActualContainerNumber">SAMPLE_VALUE</px:ContainerID>
+        <px:CarrierParty>
+          <px:Name typeCode="CarrierName">SAMPLE_VALUE</px:Name>
+        </px:CarrierParty>
+        <px:DocumentReference typeCode="MasterBOL">
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentReference>
+        <px:Dimensions>
+          <px:GrossWeightMeasure>SAMPLE_VALUE</px:GrossWeightMeasure>
+          <px:VolumeMeasure>SAMPLE_VALUE</px:VolumeMeasure>
+        </px:Dimensions>
+        <px:Quantity typeCode="CarrierPackages">SAMPLE_VALUE</px:Quantity>
+        <px:Quantity typeCode="CLRQuantity">SAMPLE_VALUE</px:Quantity>
+        <px:DocumentReference typeCode="CustomerReference">
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentReference>
+        <px:DocumentReference typeCode="DepartmentNumberReference">
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentReference>
+        <px:DocumentReference>
+          <px:Extension typeCode="CustomDetails">
+            <px:Number typeCode="CustomReferenceNumber">SAMPLE_VALUE</px:Number>
+          </px:Extension>
+          <px:Extension typeCode="SupplierExport">
+            <px:Text typeCode="SupplierExportDeclaration">SAMPLE_VALUE</px:Text>
+          </px:Extension>
+          <px:Extension typeCode="DutyTaxes">
+            <px:Text typeCode="DutyTaxes">SAMPLE_VALUE</px:Text>
+          </px:Extension>
+        </px:DocumentReference>
+        <px:Note typeCode="Comment">SAMPLE_VALUE</px:Note>
+      </px:ShipmentUnit>
+    </px:Shipment>
+    <px:NotifyShipment />
+  </px:DataArea>
+</px:NotifyShipment>
