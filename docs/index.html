@@ -463,6 +463,107 @@
       return (text || "").replace(/\s+/g, "").trim().toLowerCase();
     }
 
+    function isPathLikeValue(value) {
+      return /^\s*\/?[A-Za-z_][\w:-]*(\/|\[)/.test(String(value || ""));
+    }
+
+    function detectEmbeddedHeaderLines(workbook, wantedHeader, selectedSheet) {
+      const sheetNames = selectedSheet ? [selectedSheet] : workbook.SheetNames;
+      let bestMatch = null;
+
+      sheetNames.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) {
+          return;
+        }
+
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        rows.forEach((row, rowIndex) => {
+          row.forEach((cell, columnIndex) => {
+            if (normalizeHeader(cell) !== wantedHeader) {
+              return;
+            }
+
+            const values = [];
+            let pathLikeCount = 0;
+            for (let index = rowIndex + 1; index < rows.length; index += 1) {
+              const rawValue = String((rows[index] && rows[index][columnIndex]) || "").trim();
+              if (!rawValue) {
+                continue;
+              }
+
+              values.push(rawValue);
+              if (isPathLikeValue(rawValue)) {
+                pathLikeCount += 1;
+              }
+            }
+
+            if (!values.length) {
+              return;
+            }
+
+            const candidate = {
+              sheetName,
+              rowNumber: rowIndex + 1,
+              columnIndex,
+              values,
+              pathLikeCount,
+              score: values.length + (pathLikeCount * 2)
+            };
+
+            if (!bestMatch || candidate.score > bestMatch.score) {
+              bestMatch = candidate;
+            }
+          });
+        });
+      });
+
+      return bestMatch;
+    }
+
+    function detectBestNoHeaderColumn(sheet) {
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      if (!rows.length) {
+        return null;
+      }
+
+      const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
+      let bestMatch = null;
+
+      for (let columnIndex = 0; columnIndex < width; columnIndex += 1) {
+        const values = [];
+        let pathLikeCount = 0;
+        rows.forEach((row) => {
+          const rawValue = String((row && row[columnIndex]) || "").trim();
+          if (!rawValue) {
+            return;
+          }
+
+          values.push(rawValue);
+          if (isPathLikeValue(rawValue)) {
+            pathLikeCount += 1;
+          }
+        });
+
+        if (!values.length) {
+          continue;
+        }
+
+        const candidate = {
+          columnIndex,
+          values,
+          pathLikeCount,
+          score: values.length + (pathLikeCount * 2)
+        };
+
+        if (!bestMatch || candidate.score > bestMatch.score) {
+          bestMatch = candidate;
+        }
+      }
+
+      return bestMatch;
+    }
+
     function normalizePathLine(line) {
       let clean = (line || "").trim();
       clean = clean.replace(/\/px:px:/g, "/px:");
@@ -696,19 +797,34 @@
         }
 
         const sheet = workbook.Sheets[sheetName];
+        const wanted = normalizeHeader(columnName.value || "xml path");
+        const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
+        if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
+          setStatus(`Detected worksheet '${embeddedHeaderMatch.sheetName}', header row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1}.`);
+          return embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value));
+        }
+
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        if (rows.length) {
+          const headers = Object.keys(rows[0]);
+          const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
+          if (resolvedHeader) {
+            return rows.map((row) => String(row[resolvedHeader] || ""));
+          }
+        }
+
+        const noHeaderMatch = detectBestNoHeaderColumn(sheet);
+        if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
+          setStatus(`Detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${sheetName}'.`);
+          return noHeaderMatch.values.filter((value) => isPathLikeValue(value));
+        }
+
         if (!rows.length) {
           throw new Error("No rows found in the selected worksheet.");
         }
 
-        const wanted = normalizeHeader(columnName.value || "xml path");
         const headers = Object.keys(rows[0]);
-        const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
-        if (!resolvedHeader) {
-          throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
-        }
-
-        return rows.map((row) => String(row[resolvedHeader] || ""));
+        throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
       }
 
       throw new Error("Unsupported file type. Please upload a .txt or .xlsx file.");
