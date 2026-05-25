@@ -464,7 +464,7 @@
     }
 
     function isPathLikeValue(value) {
-      return /^\s*\/?[A-Za-z_][\w:-]*(\/|\[)/.test(String(value || ""));
+      return /^\s*\/?[A-Za-z_][\w:-]*(\/|\[)/.test(String(value ?? ""));
     }
 
     function detectEmbeddedHeaderLines(workbook, wantedHeader, selectedSheet) {
@@ -796,7 +796,6 @@
           throw new Error(`Worksheet '${sheetName}' was not found.`);
         }
 
-        const sheet = workbook.Sheets[sheetName];
         const wanted = normalizeHeader(columnName.value || "xml path");
         const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
         if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
@@ -804,26 +803,36 @@
           return embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value));
         }
 
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        if (rows.length) {
-          const headers = Object.keys(rows[0]);
-          const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
-          if (resolvedHeader) {
-            return rows.map((row) => String(row[resolvedHeader] || ""));
+        const candidateSheets = selectedSheet ? [sheetName, ...workbook.SheetNames.filter((name) => name !== sheetName)] : workbook.SheetNames;
+        for (const currentSheetName of candidateSheets) {
+          const sheet = workbook.Sheets[currentSheetName];
+          if (!sheet) {
+            continue;
+          }
+
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+          if (rows.length) {
+            const headers = Object.keys(rows[0]).map((header) => String(header ?? ""));
+            const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
+            if (resolvedHeader) {
+              setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
+              return rows.map((row) => String(row[resolvedHeader] ?? ""));
+            }
+          }
+
+          const noHeaderMatch = detectBestNoHeaderColumn(sheet);
+          if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
+            setStatus(`Detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${currentSheetName}'.`);
+            return noHeaderMatch.values.filter((value) => isPathLikeValue(value));
           }
         }
 
-        const noHeaderMatch = detectBestNoHeaderColumn(sheet);
-        if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
-          setStatus(`Detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${sheetName}'.`);
-          return noHeaderMatch.values.filter((value) => isPathLikeValue(value));
-        }
-
-        if (!rows.length) {
+        const selectedRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+        if (!selectedRows.length) {
           throw new Error("No rows found in the selected worksheet.");
         }
 
-        const headers = Object.keys(rows[0]);
+        const headers = Object.keys(selectedRows[0]).map((header) => String(header ?? ""));
         throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
       }
 
