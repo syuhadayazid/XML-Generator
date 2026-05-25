@@ -663,6 +663,14 @@
 
       const name = match[1].trim();
       const predicate = match[3] || "";
+      if (/^@([\w:.-]+)$/.test(name)) {
+        return {
+          name,
+          attrs: {},
+          isAttributeOnly: true
+        };
+      }
+
       if (!name || /[\[\]@=\s]/.test(name)) {
         throw new Error("Invalid element name: " + name);
       }
@@ -687,7 +695,7 @@
         }
       }
 
-      return { name, attrs };
+      return { name, attrs, isAttributeOnly: false };
     }
 
     function sanitizeChildAttrs(attrs) {
@@ -803,6 +811,17 @@
           let cursor = root;
           for (let i = 1; i < segments.length; i += 1) {
             const current = segments[i];
+            if (current.isAttributeOnly) {
+              if (i !== segments.length - 1) {
+                throw new Error("Attribute segment must be the last segment in the path: " + current.name);
+              }
+
+              const attrName = current.name.slice(1);
+              const attrValue = (attrName === "xmlns" || attrName.startsWith("xmlns:")) ? root.attrs[attrName] || root.attrs.xmlns || "urn:px" : sampleValueFor(attrName);
+              cursor.attrs[attrName] = attrValue;
+              continue;
+            }
+
             cursor = getOrCreateChild(cursor, current.name, sanitizeChildAttrs(current.attrs));
             if (i === segments.length - 1 && !cursor.text) {
               cursor.text = sampleValueFor(current.name);

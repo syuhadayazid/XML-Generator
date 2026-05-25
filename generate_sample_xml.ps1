@@ -345,6 +345,7 @@ function Parse-Segment {
         Valid = $false
         Name = ""
         Attributes = @{}
+        IsAttributeOnly = $false
         Error = ""
     }
 
@@ -358,6 +359,13 @@ function Parse-Segment {
         $name = $name -replace '(^|:)px:px:', '$1px:'
     }
     $predicate = $Matches[3]
+
+        if ($name -match '^@([\w:.-]+)$') {
+        $result.Valid = $true
+        $result.Name = $name
+        $result.IsAttributeOnly = $true
+        return $result
+    }
 
     if ([string]::IsNullOrWhiteSpace($name) -or ($name -match '[\[\]@=\s]')) {
         $result.Error = "Line ${lineNo}: invalid element name '$name'"
@@ -375,13 +383,23 @@ function Parse-Segment {
         # Ignore path predicates that are not element attributes, e.g. [/px:@typeCode=...]
         if ($predicate -notmatch '/\s*px:') {
             $attrMatches = [regex]::Matches($predicate, '@([\w:]+)\s*=\s*(["''])(.*?)\2')
-            if (($predicate -match '@') -and $attrMatches.Count -eq 0) {
-                $result.Error = "Line ${lineNo}: unsupported/malformed predicate '$predicate'"
-                return $result
-            }
             foreach ($m in $attrMatches) {
                 $attrName = $m.Groups[1].Value
                 $attrs[$attrName] = $m.Groups[3].Value
+            }
+
+            # Support attribute-existence predicates like [@unitCode] by assigning a sample value.
+            $bareAttrMatches = [regex]::Matches($predicate, '@([\w:]+)(?!\s*=)')
+            foreach ($m in $bareAttrMatches) {
+                $attrName = $m.Groups[1].Value
+                if (-not $attrs.ContainsKey($attrName)) {
+                    $attrs[$attrName] = 'SAMPLE_VALUE'
+                }
+            }
+
+            if (($predicate -match '@') -and $attrs.Count -eq 0) {
+                $result.Error = "Line ${lineNo}: unsupported/malformed predicate '$predicate'"
+                return $result
             }
         }
     }
@@ -742,6 +760,23 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
 
     $cursor = $root
     for ($i = $start; $i -lt $parsed.Count; $i++) {
+        if ($parsed[$i].IsAttributeOnly) {
+            if ($i -ne ($parsed.Count - 1)) {
+                $skipped++
+                $malformed.Add("Line ${lineNo}: attribute segment '$($parsed[$i].Name)' must be the last segment in the path")
+                continue
+            }
+
+            $attrName = $parsed[$i].Name.Substring(1)
+            $attrValue = 'SAMPLE_VALUE'
+            if ($attrName -eq 'xmlns' -or $attrName.StartsWith('xmlns:')) {
+                $attrValue = if ($childNs) { $childNs } else { $ns }
+            }
+
+            $null = $cursor.SetAttribute($attrName, $attrValue)
+            continue
+        }
+
         $cursor = Get-OrCreate-Child -doc $xmlDoc -parent $cursor -fullName $parsed[$i].Name -attributes $parsed[$i].Attributes -nsValue $childNs
         if ($i -eq ($parsed.Count - 1) -and [string]::IsNullOrWhiteSpace($cursor.InnerText)) {
             if ($parsed[$i].Name -match 'Date|Time') {
