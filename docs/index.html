@@ -857,21 +857,22 @@
             continue;
           }
 
+          if (!columnNameProvided) {
+            const noHeaderMatch = detectBestNoHeaderColumn(sheet);
+            if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
+              setStatus(`Auto-detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${currentSheetName}'.`);
+              return noHeaderMatch.values.filter((value) => isPathLikeValue(value));
+            }
+            continue;
+          }
+
           const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
           if (rows.length) {
-            if (columnNameProvided) {
-              const headers = Object.keys(rows[0]).map((header) => String(header ?? ""));
-              const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
-              if (resolvedHeader) {
-                setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
-                return rows.map((row) => String(row[resolvedHeader] ?? ""));
-              }
-            } else {
-              const autoHeaderMatch = detectBestHeaderColumn(rows);
-              if (autoHeaderMatch && autoHeaderMatch.pathLikeCount > 0) {
-                setStatus(`Auto-detected worksheet '${currentSheetName}' with column '${autoHeaderMatch.header}'.`);
-                return autoHeaderMatch.values.filter((value) => isPathLikeValue(value));
-              }
+            const headers = Object.keys(rows[0]).map((header) => String(header ?? ""));
+            const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
+            if (resolvedHeader) {
+              setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
+              return rows.map((row) => String(row[resolvedHeader] ?? ""));
             }
           }
 
