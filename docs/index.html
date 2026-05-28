@@ -398,7 +398,8 @@
       items.slice(0, 25).forEach((msg) => {
         const detail = describeWarning(msg);
         const li = document.createElement("li");
-        li.textContent = `${detail.base} | Why: ${detail.why} | How to fix: ${detail.fix} | Auto-fix attempted: ${detail.autoFix}.`;
+        li.textContent = `${detail.base}\nWhy: ${detail.why}\nHow to fix: ${detail.fix}\nAuto-fix attempted: ${detail.autoFix}.`;
+        li.style.whiteSpace = "pre-line";
         warningList.appendChild(li);
       });
     }
