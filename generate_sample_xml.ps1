@@ -15,6 +15,51 @@ if (-not (Test-Path $outputDir)) {
 
 $lines = @()
 
+function Convert-EdiToPathLines {
+    param([string]$ediText)
+
+    $result = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrWhiteSpace($ediText)) {
+        return @($result)
+    }
+
+    $segmentParts = [regex]::Split($ediText, '~|\r?\n')
+    foreach ($rawSegment in $segmentParts) {
+        $segment = [string]$rawSegment
+        if ([string]::IsNullOrWhiteSpace($segment)) {
+            continue
+        }
+
+        $segment = $segment.Trim()
+        if (-not $segment) {
+            continue
+        }
+
+        $elements = $segment -split '\*'
+        if (-not $elements -or $elements.Count -eq 0) {
+            continue
+        }
+
+        $segmentId = ([string]$elements[0]).Trim()
+        $segmentId = ($segmentId -replace '[^A-Za-z0-9_:\-]', '')
+        if ([string]::IsNullOrWhiteSpace($segmentId)) {
+            continue
+        }
+
+        for ($i = 1; $i -lt $elements.Count; $i++) {
+            $value = ([string]$elements[$i]).Trim()
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                continue
+            }
+
+            $elementName = "{0}{1:D2}" -f $segmentId, $i
+            $result.Add("/X12/$segmentId/$elementName")
+        }
+    }
+
+    return @($result)
+}
+
 function Get-InputLines {
     param(
         [string]$sourcePath,
@@ -26,6 +71,17 @@ function Get-InputLines {
 
     if ($ext -eq ".txt") {
         return @(Get-Content $sourcePath)
+    }
+
+    if ($ext -eq ".edi" -or $ext -eq ".x12") {
+        $ediText = Get-Content -Raw $sourcePath
+        $converted = Convert-EdiToPathLines -ediText $ediText
+        if (-not $converted -or $converted.Count -eq 0) {
+            Write-Error "No readable EDI segments found in '$sourcePath'."
+            exit 1
+        }
+
+        return @($converted)
     }
 
     if ($ext -eq ".xlsx") {
@@ -276,7 +332,7 @@ function Get-InputLines {
         return @($result)
     }
 
-    Write-Error "Unsupported input file type '$ext'. Supported: .txt, .xlsx"
+    Write-Error "Unsupported input file type '$ext'. Supported: .txt, .xlsx, .edi, .x12"
     exit 1
 }
 

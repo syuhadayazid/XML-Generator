@@ -283,6 +283,7 @@
           <ul>
             <li>TXT: one XML path per line</li>
             <li>XLSX: paths read from one selected column</li>
+            <li>EDI/X12: segments are converted to XML-like path lines</li>
           </ul>
         </article>
 
@@ -304,7 +305,7 @@
         <div class="tool-grid">
           <div class="field">
             <label for="inputFile">Input file</label>
-            <input id="inputFile" type="file" accept=".txt,.xlsx">
+            <input id="inputFile" type="file" accept=".txt,.xlsx,.edi,.x12">
           </div>
 
           <div class="field">
@@ -520,8 +521,8 @@
       }
       const file = files[0];
       const ext = file.name.toLowerCase();
-      if (!(ext.endsWith(".txt") || ext.endsWith(".xlsx"))) {
-        setStatus("Unsupported file. Please drop a TXT or XLSX file.", true);
+      if (!(ext.endsWith(".txt") || ext.endsWith(".xlsx") || ext.endsWith(".edi") || ext.endsWith(".x12"))) {
+        setStatus("Unsupported file. Please drop a TXT, XLSX, EDI, or X12 file.", true);
         return;
       }
       setSelectedFile(file);
@@ -683,6 +684,40 @@
       clean = clean.replace(/px:\/Shipment/g, "px:Shipment");
       clean = clean.replace(/(\[[^\]]+\])(?=[A-Za-z_])/g, "$1/");
       return clean;
+    }
+
+    function convertEdiToPathLines(ediText) {
+      const lines = [];
+      const parts = String(ediText ?? "").split(/~|\r?\n/);
+
+      parts.forEach((rawSegment) => {
+        const segment = String(rawSegment ?? "").trim();
+        if (!segment) {
+          return;
+        }
+
+        const elements = segment.split("*");
+        if (!elements.length) {
+          return;
+        }
+
+        const segmentId = String(elements[0] ?? "").trim().replace(/[^A-Za-z0-9_:-]/g, "");
+        if (!segmentId) {
+          return;
+        }
+
+        for (let i = 1; i < elements.length; i += 1) {
+          const value = String(elements[i] ?? "").trim();
+          if (!value) {
+            continue;
+          }
+
+          const elementName = `${segmentId}${String(i).padStart(2, "0")}`;
+          lines.push(`/X12/${segmentId}/${elementName}`);
+        }
+      });
+
+      return lines;
     }
 
     function splitXmlPathSegments(path) {
@@ -926,6 +961,16 @@
         return text.split(/\r?\n/);
       }
 
+      if (ext === "edi" || ext === "x12") {
+        const text = await file.text();
+        const converted = convertEdiToPathLines(text);
+        if (!converted.length) {
+          throw new Error("No readable EDI segments found in the uploaded file.");
+        }
+
+        return converted;
+      }
+
       if (ext === "xlsx") {
         const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
         const selectedSheet = worksheetName.value.trim();
@@ -991,7 +1036,7 @@
         throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
       }
 
-      throw new Error("Unsupported file type. Please upload a .txt or .xlsx file.");
+      throw new Error("Unsupported file type. Please upload a .txt, .xlsx, .edi, or .x12 file.");
     }
 
     async function generateFromFile(file) {
