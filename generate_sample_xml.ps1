@@ -1,5 +1,6 @@
 $inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\xmlpath.txt"
 $outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
+$ediOutputPath = [System.IO.Path]::ChangeExtension($outputPath, ".edi")
 $xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
 $xlsxWorksheetName = $null
 $outputDir = Split-Path -Parent $outputPath
@@ -60,6 +61,42 @@ function Convert-EdiToPathLines {
     return @($result)
 }
 
+function Test-LooksLikeEdiContent {
+    param([string[]]$lines)
+
+    if (-not $lines -or $lines.Count -eq 0) {
+        return $false
+    }
+
+    $segments = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $lines) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        $parts = [regex]::Split([string]$line, '~')
+        foreach ($part in $parts) {
+            $trimmed = ([string]$part).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($trimmed)) {
+                $segments.Add($trimmed)
+            }
+        }
+    }
+
+    if ($segments.Count -lt 2) {
+        return $false
+    }
+
+    $ediLike = 0
+    foreach ($segment in $segments) {
+        if ($segment -match '^[A-Za-z0-9]{2,3}\*') {
+            $ediLike++
+        }
+    }
+
+    return (($ediLike / [double]$segments.Count) -ge 0.6)
+}
+
 function Get-InputLines {
     param(
         [string]$sourcePath,
@@ -70,7 +107,17 @@ function Get-InputLines {
     $ext = [System.IO.Path]::GetExtension($sourcePath).ToLowerInvariant()
 
     if ($ext -eq ".txt") {
-        return @(Get-Content $sourcePath)
+        $text = Get-Content -Raw $sourcePath
+        $rawLines = @($text -split '\r?\n')
+        if (Test-LooksLikeEdiContent -lines $rawLines) {
+            $converted = Convert-EdiToPathLines -ediText $text
+            if ($converted -and $converted.Count -gt 0) {
+                Write-Warning "Detected EDI content in TXT input. Converting segments to XML-like paths."
+                return @($converted)
+            }
+        }
+
+        return @($rawLines)
     }
 
     if ($ext -eq ".edi" -or $ext -eq ".x12") {
@@ -329,6 +376,15 @@ function Get-InputLines {
                 $result.Add($value)
             }
         }
+
+        if (Test-LooksLikeEdiContent -lines @($result)) {
+            $converted = Convert-EdiToPathLines -ediText (($result -join [Environment]::NewLine))
+            if ($converted -and $converted.Count -gt 0) {
+                Write-Warning "Detected EDI content in XLSX column '$resolvedColumn'. Converting segments to XML-like paths."
+                return @($converted)
+            }
+        }
+
         return @($result)
     }
 
@@ -389,6 +445,20 @@ function Split-XmlPathSegments {
     }
 
     return @{ Valid = $true; Segments = $segments; Error = "" }
+}
+
+function Normalize-PathLine {
+    param([string]$line)
+
+    $clean = $line.Trim()
+    while ($clean -match '(^|/)px:px:') {
+        $clean = $clean -replace '(^|/)px:px:', '$1px:'
+    }
+    $clean = $clean -replace 'px:/Shipment', 'px:Shipment'
+    $clean = $clean -replace 'px:/', 'px:'
+    $clean = [regex]::Replace($clean, '(?<=[A-Za-z0-9_\]])(px:)(?=[A-Za-z_])', '/$1')
+    $clean = [regex]::Replace($clean, '(\[[^\]]+\])(?=[A-Za-z_])', '$1/')
+    return $clean
 }
 
 function Parse-Segment {
@@ -464,6 +534,236 @@ function Parse-Segment {
     $result.Name = $name
     $result.Attributes = $attrs
     return $result
+}
+
+function Get-LocalName {
+    param([string]$name)
+
+    if ($name -match ':') {
+        return $name.Split(':')[-1]
+    }
+
+    return $name
+}
+
+function Get-SampleEdiElementValue {
+    param(
+        [string]$segmentId,
+        [int]$position,
+        [string]$transactionSet
+    )
+
+    $segment = $segmentId.ToUpperInvariant()
+    switch ($segment) {
+        'ISA' {
+            switch ($position) {
+                1 { return '00' }
+                2 { return '          ' }
+                3 { return '00' }
+                4 { return '          ' }
+                5 { return 'ZZ' }
+                6 { return 'SENDERID      ' }
+                7 { return 'ZZ' }
+                8 { return 'RECEIVERID    ' }
+                9 { return (Get-Date -Format 'yyMMdd') }
+                10 { return (Get-Date -Format 'HHmm') }
+                11 { return 'U' }
+                12 { return '00401' }
+                13 { return '000000001' }
+                14 { return '0' }
+                15 { return 'T' }
+                16 { return ':' }
+                default { return 'SAMPLE_VALUE' }
+            }
+        }
+        'GS' {
+            switch ($position) {
+                1 { return 'SH' }
+                2 { return 'SENDER' }
+                3 { return 'RECEIVER' }
+                4 { return (Get-Date -Format 'yyyyMMdd') }
+                5 { return (Get-Date -Format 'HHmm') }
+                6 { return '1' }
+                7 { return 'X' }
+                8 { return '004010' }
+                default { return 'SAMPLE_VALUE' }
+            }
+        }
+        'ST' {
+            if ($position -eq 1) { return $transactionSet }
+            if ($position -eq 2) { return '0001' }
+            return 'SAMPLE_VALUE'
+        }
+        'SE' {
+            if ($position -eq 1) { return '0000' }
+            if ($position -eq 2) { return '0001' }
+            return 'SAMPLE_VALUE'
+        }
+        'GE' {
+            if ($position -eq 1) { return '1' }
+            if ($position -eq 2) { return '1' }
+            return 'SAMPLE_VALUE'
+        }
+        'IEA' {
+            if ($position -eq 1) { return '1' }
+            if ($position -eq 2) { return '000000001' }
+            return 'SAMPLE_VALUE'
+        }
+        default {
+            if ($position -eq 1 -and $segment -match '^N[1-4]$') {
+                return 'SAMPLE_VALUE'
+            }
+            return 'SAMPLE_VALUE'
+        }
+    }
+}
+
+function Build-SampleEdiFromPathLines {
+    param([string[]]$pathLines)
+
+    $segments = [ordered]@{}
+
+    foreach ($line in $pathLines) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        $clean = Normalize-PathLine -line $line
+        $split = Split-XmlPathSegments -path $clean
+        if (-not $split.Valid -or $split.Segments.Count -lt 3) {
+            continue
+        }
+
+        $parsed = New-Object System.Collections.Generic.List[hashtable]
+        $lineMalformed = $false
+        foreach ($seg in $split.Segments) {
+            $parsedSeg = Parse-Segment -segment $seg -lineNo 0
+            if (-not $parsedSeg.Valid -or $parsedSeg.IsAttributeOnly) {
+                $lineMalformed = $true
+                break
+            }
+            $parsed.Add($parsedSeg)
+        }
+
+        if ($lineMalformed -or $parsed.Count -lt 3) {
+            continue
+        }
+
+        $rootName = Get-LocalName -name $parsed[0].Name
+        if ($rootName -ne 'X12') {
+            continue
+        }
+
+        $segmentId = (Get-LocalName -name $parsed[1].Name).ToUpperInvariant()
+        if ([string]::IsNullOrWhiteSpace($segmentId) -or $segmentId -notmatch '^[A-Z0-9]{2,3}$') {
+            continue
+        }
+
+        $elementName = Get-LocalName -name $parsed[2].Name
+        $position = $null
+        if ($elementName -match ([regex]::Escape($segmentId) + '(\d{2})$')) {
+            $position = [int]$Matches[1]
+        } elseif ($elementName -match '(\d{2})$') {
+            $position = [int]$Matches[1]
+        }
+
+        if (-not $position -or $position -lt 1) {
+            continue
+        }
+
+        if (-not $segments.Contains($segmentId)) {
+            $segments[$segmentId] = [ordered]@{}
+        }
+
+        $positionKey = [string]$position
+        if (-not $segments[$segmentId].Contains($positionKey)) {
+            $segments[$segmentId][$positionKey] = $null
+        }
+    }
+
+    if ($segments.Count -eq 0) {
+        return $null
+    }
+
+    $controlSegments = @('ISA', 'GS', 'ST', 'SE', 'GE', 'IEA')
+    $dataSegmentIds = New-Object System.Collections.Generic.List[string]
+    foreach ($segId in $segments.Keys) {
+        if ($controlSegments -contains $segId) {
+            continue
+        }
+        $dataSegmentIds.Add($segId)
+    }
+
+    if ($dataSegmentIds.Count -eq 0) {
+        $dataSegmentIds.Add('B10')
+        if (-not $segments.Contains('B10')) {
+            $segments['B10'] = [ordered]@{ 1 = $null; 2 = $null; 3 = $null }
+        }
+    }
+
+    $transactionSet = '214'
+    if ($segments.Contains('ST') -and $segments['ST'].Contains(1)) {
+        $transactionSet = '214'
+    }
+
+    $orderedTxnSegments = @('ST') + @($dataSegmentIds) + @('SE')
+
+    $segmentLines = New-Object System.Collections.Generic.List[string]
+
+    $emitSegment = {
+        param([string]$segmentId, [int]$forceElementCount)
+
+        $elementMap = [ordered]@{}
+        if ($segments.Contains($segmentId)) {
+            foreach ($k in $segments[$segmentId].Keys) {
+                $elementMap[[string]$k] = $segments[$segmentId][$k]
+            }
+        }
+
+        if ($forceElementCount -gt 0) {
+            for ($i = 1; $i -le $forceElementCount; $i++) {
+                $key = [string]$i
+                if (-not $elementMap.Contains($key)) {
+                    $elementMap[$key] = $null
+                }
+            }
+        }
+
+        if ($elementMap.Count -eq 0) {
+            $elementMap['1'] = $null
+        }
+
+        $maxPos = (($elementMap.Keys | ForEach-Object { [int]$_ }) | Measure-Object -Maximum).Maximum
+        if (-not $maxPos) { $maxPos = 1 }
+
+        $values = New-Object System.Collections.Generic.List[string]
+        for ($pos = 1; $pos -le [int]$maxPos; $pos++) {
+            $values.Add((Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet))
+        }
+
+        $segmentText = $segmentId
+        if ($values.Count -gt 0) {
+            $segmentText += '*' + ($values -join '*')
+        }
+        $segmentText += '~'
+        $segmentLines.Add($segmentText)
+    }
+
+    & $emitSegment 'ISA' 16
+    & $emitSegment 'GS' 8
+    & $emitSegment 'ST' 2
+
+    foreach ($segId in $dataSegmentIds) {
+        & $emitSegment $segId 0
+    }
+
+    $txnSegmentCount = $orderedTxnSegments.Count
+    $seLine = "SE*$txnSegmentCount*0001~"
+    $segmentLines.Add($seLine)
+    $segmentLines.Add('GE*1*1~')
+    $segmentLines.Add('IEA*1*000000001~')
+
+    return ($segmentLines -join [Environment]::NewLine)
 }
 
 function New-ElementFromSpec {
@@ -720,14 +1020,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     }
 
     $clean = $line.Trim()
-    while ($clean -match '(^|/)px:px:') {
-        $clean = $clean -replace '(^|/)px:px:', '$1px:'
-    }
-    $clean = $clean -replace 'px:/Shipment', 'px:Shipment'
-    $clean = $clean -replace 'px:/', 'px:'
-    $clean = [regex]::Replace($clean, '(?<=[A-Za-z0-9_\]])(px:)(?=[A-Za-z_])', '/$1')
-    # Fix common malformed pattern: "]TagName" should be "]/TagName".
-    $clean = [regex]::Replace($clean, '(\[[^\]]+\])(?=[A-Za-z_])', '$1/')
+    $clean = Normalize-PathLine -line $line
 
     $split = Split-XmlPathSegments -path $clean
     if (-not $split.Valid) {
@@ -870,6 +1163,15 @@ $xmlString = [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
 $xmlString = $xmlString -replace ' xmlns:px="urn:px"', ''
 $xmlString | Out-File -FilePath $outputPath -Encoding UTF8
 
+$ediWritten = $false
+if ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12') {
+    $ediText = Build-SampleEdiFromPathLines -pathLines $lines
+    if (-not [string]::IsNullOrWhiteSpace($ediText)) {
+        $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
+        $ediWritten = $true
+    }
+}
+
 Write-Output "Summary:"
 Write-Output "Output Path: $outputPath"
 Write-Output "Detected Root: $($root.Name)"
@@ -877,6 +1179,9 @@ Write-Output "Lines Read: $($lines.Count)"
 Write-Output "Lines Used: $used"
 Write-Output "Lines Skipped: $skipped"
 Write-Output "Malformed Lines: $($malformed.Count)"
+if ($ediWritten) {
+    Write-Output "EDI Output Path: $ediOutputPath"
+}
 if ($malformed.Count -gt 0) {
     Write-Output "Malformed Details:"
     foreach ($entry in $malformed) {

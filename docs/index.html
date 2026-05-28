@@ -723,6 +723,43 @@
       return lines;
     }
 
+    function looksLikeEdiLines(lines) {
+      if (!Array.isArray(lines) || lines.length === 0) {
+        return false;
+      }
+
+      const segments = [];
+      lines.forEach((line) => {
+        String(line ?? "").split("~").forEach((part) => {
+          const trimmed = String(part ?? "").trim();
+          if (trimmed) {
+            segments.push(trimmed);
+          }
+        });
+      });
+
+      if (segments.length < 2) {
+        return false;
+      }
+
+      const ediLike = segments.filter((seg) => /^[A-Za-z0-9]{2,3}\*/.test(seg)).length;
+      return (ediLike / segments.length) >= 0.6;
+    }
+
+    function maybeConvertDetectedEdi(lines, sourceLabel) {
+      if (!looksLikeEdiLines(lines)) {
+        return lines;
+      }
+
+      const converted = convertEdiToPathLines(lines.join("\n"));
+      if (converted.length) {
+        setStatus(`Detected EDI content in ${sourceLabel}. Converting segments to XML-like paths.`);
+        return converted;
+      }
+
+      return lines;
+    }
+
     function getLocalName(name) {
       return String(name ?? "").includes(":") ? String(name).split(":").pop() : String(name ?? "");
     }
@@ -1116,7 +1153,7 @@
       const ext = file.name.toLowerCase().split(".").pop();
       if (ext === "txt") {
         const text = await file.text();
-        return text.split(/\r?\n/);
+        return maybeConvertDetectedEdi(text.split(/\r?\n/), "TXT input");
       }
 
       if (ext === "edi" || ext === "x12") {
@@ -1144,7 +1181,7 @@
           const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
           if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
             setStatus(`Detected worksheet '${embeddedHeaderMatch.sheetName}', header row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1}.`);
-            return embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value));
+            return maybeConvertDetectedEdi(embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${embeddedHeaderMatch.sheetName}'`);
           }
         }
 
@@ -1159,7 +1196,7 @@
             const noHeaderMatch = detectBestNoHeaderColumn(sheet);
             if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
               setStatus(`Auto-detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${currentSheetName}'.`);
-              return noHeaderMatch.values.filter((value) => isPathLikeValue(value));
+              return maybeConvertDetectedEdi(noHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${currentSheetName}'`);
             }
             continue;
           }
@@ -1170,14 +1207,14 @@
             const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
             if (resolvedHeader) {
               setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
-              return rows.map((row) => String(row[resolvedHeader] ?? ""));
+              return maybeConvertDetectedEdi(rows.map((row) => String(row[resolvedHeader] ?? "")), `worksheet '${currentSheetName}' column '${resolvedHeader}'`);
             }
           }
 
           const noHeaderMatch = detectBestNoHeaderColumn(sheet);
           if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
             setStatus(`Detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${currentSheetName}'.`);
-            return noHeaderMatch.values.filter((value) => isPathLikeValue(value));
+            return maybeConvertDetectedEdi(noHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${currentSheetName}'`);
           }
         }
 
