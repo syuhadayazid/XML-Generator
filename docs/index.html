@@ -396,10 +396,67 @@
       }
 
       items.slice(0, 25).forEach((msg) => {
+        const detail = describeWarning(msg);
         const li = document.createElement("li");
-        li.textContent = msg;
+        li.textContent = `${detail.base} | Why: ${detail.why} | How to fix: ${detail.fix} | Auto-fix attempted: ${detail.autoFix}.`;
         warningList.appendChild(li);
       });
+    }
+
+    function parseAutoFixFlag(message) {
+      const match = String(message ?? "").match(/\[auto-fix attempted:\s*(yes|no)\]/i);
+      if (!match) {
+        return {
+          base: String(message ?? ""),
+          autoFix: "unknown"
+        };
+      }
+
+      return {
+        base: String(message ?? "").replace(/\s*\[auto-fix attempted:\s*(yes|no)\]\s*/i, "").trim(),
+        autoFix: match[1].toLowerCase()
+      };
+    }
+
+    function describeWarning(message) {
+      const parsed = parseAutoFixFlag(message);
+      const base = parsed.base;
+      let why = "The path could not be parsed with current rules.";
+      let fix = "Review the mapping row and correct the path syntax.";
+
+      if (/Unsupported predicate:/i.test(base)) {
+        why = "The predicate format is not supported by the parser.";
+        fix = "Use attribute predicates like [@typeCode='value'] or [@unitCode], and avoid custom predicate syntax.";
+      } else if (/invalid element name/i.test(base)) {
+        why = "A path segment contains invalid element characters or malformed prefixes.";
+        fix = "Check for typos, stray symbols, or malformed namespace prefixes in the XML path.";
+      } else if (/malformed predicate quotes/i.test(base)) {
+        why = "A predicate has unbalanced quotes.";
+        fix = "Ensure each quoted value in brackets has matching opening and closing quotes.";
+      } else if (/root '.*' does not match detected root/i.test(base)) {
+        why = "This row points to a different root element than earlier rows.";
+        fix = "Keep all mapping rows under one root XML path in the same file/sheet.";
+      } else if (/Unbalanced brackets in path/i.test(base)) {
+        why = "Bracket depth in the path is not balanced.";
+        fix = "Ensure each '[' has a matching ']' and predicates are properly closed.";
+      } else if (/No valid paths found/i.test(base)) {
+        why = "No rows were recognized as valid XML paths.";
+        fix = "Confirm worksheet/column selection and ensure mapping values begin with XML-like paths.";
+      }
+
+      return {
+        base,
+        why,
+        fix,
+        autoFix: parsed.autoFix
+      };
+    }
+
+    function summarizeWarnings(items, maxCount = 3) {
+      return (items || [])
+        .slice(0, maxCount)
+        .map((item) => describeWarning(item).base)
+        .join(" | ");
     }
 
     function setStatus(message, isWarn = false) {
@@ -790,8 +847,14 @@
           continue;
         }
 
+        const original = String(rawLine);
+        const originalTrimmed = original.trim();
+        let clean = "";
+        let autoFixAttempted = false;
+
         try {
-          const clean = normalizePathLine(String(rawLine));
+          clean = normalizePathLine(original);
+          autoFixAttempted = clean !== originalTrimmed;
           const segments = splitXmlPathSegments(clean).map(parseSegment);
           if (segments.length === 0) {
             skipped += 1;
@@ -804,7 +867,7 @@
 
           if (segments[0].name !== root.name) {
             skipped += 1;
-            malformed.push(`Line ${lineNo}: root '${segments[0].name}' does not match detected root '${root.name}'`);
+            malformed.push(`Line ${lineNo}: root '${segments[0].name}' does not match detected root '${root.name}' [auto-fix attempted: ${autoFixAttempted ? "yes" : "no"}]`);
             continue;
           }
 
@@ -831,7 +894,7 @@
           used += 1;
         } catch (error) {
           skipped += 1;
-          malformed.push(`Line ${lineNo}: ${error.message}`);
+          malformed.push(`Line ${lineNo}: ${error.message} [auto-fix attempted: ${autoFixAttempted ? "yes" : "no"}]`);
         }
       }
 
@@ -942,7 +1005,7 @@
 
         let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
-          message += ` Warnings: ${result.malformed.slice(0, 3).join(" | ")}`;
+          message += ` Warnings (${result.malformed.length}): ${summarizeWarnings(result.malformed, 3)}`;
         }
         renderWarnings(result.malformed);
         setStatus(message, result.malformed.length > 0);
