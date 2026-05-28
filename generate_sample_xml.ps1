@@ -2,7 +2,6 @@ $inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample f
 $outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
 $xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
 $xlsxWorksheetName = $null
-$xsdPath = $null
 $outputDir = Split-Path -Parent $outputPath
 
 if (-not (Test-Path $inputPath)) {
@@ -12,11 +11,6 @@ if (-not (Test-Path $inputPath)) {
 
 if (-not (Test-Path $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-}
-
-if (-not [string]::IsNullOrWhiteSpace($xsdPath) -and -not (Test-Path $xsdPath)) {
-    Write-Error "XSD file not found: $xsdPath"
-    exit 1
 }
 
 $lines = @()
@@ -820,42 +814,6 @@ $xmlString = [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
 $xmlString = $xmlString -replace ' xmlns:px="urn:px"', ''
 $xmlString | Out-File -FilePath $outputPath -Encoding UTF8
 
-$xsdValidationRan = $false
-$xsdValidationPassed = $true
-$xsdIssues = New-Object System.Collections.Generic.List[string]
-
-if (-not [string]::IsNullOrWhiteSpace($xsdPath)) {
-    $xsdValidationRan = $true
-    try {
-        $schemaSet = New-Object System.Xml.Schema.XmlSchemaSet
-        $null = $schemaSet.Add($null, $xsdPath)
-
-        $readerSettings = New-Object System.Xml.XmlReaderSettings
-        $readerSettings.ValidationType = [System.Xml.ValidationType]::Schema
-        $readerSettings.Schemas = $schemaSet
-        $readerSettings.ValidationFlags = [System.Xml.Schema.XmlSchemaValidationFlags]::ReportValidationWarnings
-
-        $readerSettings.add_ValidationEventHandler({
-            param($sender, $eventArgs)
-            $xsdIssues.Add("$($eventArgs.Severity): $($eventArgs.Message)")
-        })
-
-        $validationReader = [System.Xml.XmlReader]::Create($outputPath, $readerSettings)
-        try {
-            while ($validationReader.Read()) { }
-        } finally {
-            $validationReader.Close()
-        }
-
-        if ($xsdIssues.Count -gt 0) {
-            $xsdValidationPassed = $false
-        }
-    } catch {
-        $xsdValidationPassed = $false
-        $xsdIssues.Add("Error: $($_.Exception.Message)")
-    }
-}
-
 Write-Output "Summary:"
 Write-Output "Output Path: $outputPath"
 Write-Output "Detected Root: $($root.Name)"
@@ -867,16 +825,5 @@ if ($malformed.Count -gt 0) {
     Write-Output "Malformed Details:"
     foreach ($entry in $malformed) {
         Write-Output "- $entry"
-    }
-}
-
-if ($xsdValidationRan) {
-    Write-Output "XSD Validation: $(if ($xsdValidationPassed) { 'Passed' } else { 'Failed' })"
-    Write-Output "XSD Path: $xsdPath"
-    if ($xsdIssues.Count -gt 0) {
-        Write-Output "XSD Details:"
-        foreach ($issue in $xsdIssues) {
-            Write-Output "- $issue"
-        }
     }
 }
