@@ -332,6 +332,7 @@
         <div class="tool-actions">
           <button id="generateButton" type="button">Generate XML</button>
           <button id="downloadButton" class="secondary" type="button" disabled>Download XML</button>
+          <button id="downloadEdiButton" class="secondary" type="button" disabled>Download EDI</button>
           <button id="copyButton" class="secondary" type="button" disabled>Copy XML</button>
         </div>
 
@@ -364,6 +365,7 @@
     const downloadName = document.getElementById("downloadName");
     const generateButton = document.getElementById("generateButton");
     const downloadButton = document.getElementById("downloadButton");
+    const downloadEdiButton = document.getElementById("downloadEdiButton");
     const copyButton = document.getElementById("copyButton");
     const statusBox = document.getElementById("statusBox");
     const xmlPreview = document.getElementById("xmlPreview");
@@ -373,6 +375,7 @@
     const toast = document.getElementById("toast");
 
     let generatedXml = "";
+    let generatedEdi = "";
     let selectedFile = null;
     let toastTimer = null;
 
@@ -720,6 +723,161 @@
       return lines;
     }
 
+    function getLocalName(name) {
+      return String(name ?? "").includes(":") ? String(name).split(":").pop() : String(name ?? "");
+    }
+
+    function getSampleEdiElementValue(segmentId, position, transactionSet) {
+      const seg = String(segmentId ?? "").toUpperCase();
+      switch (seg) {
+        case "ISA":
+          switch (position) {
+            case 1: return "00";
+            case 2: return "          ";
+            case 3: return "00";
+            case 4: return "          ";
+            case 5: return "ZZ";
+            case 6: return "SENDERID      ";
+            case 7: return "ZZ";
+            case 8: return "RECEIVERID    ";
+            case 9: return new Date().toISOString().slice(2, 10).replace(/-/g, "");
+            case 10: return new Date().toISOString().slice(11, 16).replace(":", "");
+            case 11: return "U";
+            case 12: return "00401";
+            case 13: return "000000001";
+            case 14: return "0";
+            case 15: return "T";
+            case 16: return ":";
+            default: return "SAMPLE_VALUE";
+          }
+        case "GS":
+          switch (position) {
+            case 1: return "SH";
+            case 2: return "SENDER";
+            case 3: return "RECEIVER";
+            case 4: return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+            case 5: return new Date().toISOString().slice(11, 16).replace(":", "");
+            case 6: return "1";
+            case 7: return "X";
+            case 8: return "004010";
+            default: return "SAMPLE_VALUE";
+          }
+        case "ST":
+          if (position === 1) { return transactionSet; }
+          if (position === 2) { return "0001"; }
+          return "SAMPLE_VALUE";
+        case "SE":
+          if (position === 1) { return "0000"; }
+          if (position === 2) { return "0001"; }
+          return "SAMPLE_VALUE";
+        case "GE":
+          if (position === 1) { return "1"; }
+          if (position === 2) { return "1"; }
+          return "SAMPLE_VALUE";
+        case "IEA":
+          if (position === 1) { return "1"; }
+          if (position === 2) { return "000000001"; }
+          return "SAMPLE_VALUE";
+        default:
+          return "SAMPLE_VALUE";
+      }
+    }
+
+    function buildSampleEdiFromPathLines(lines) {
+      const segmentMap = new Map();
+
+      lines.forEach((line) => {
+        if (!line || !String(line).trim()) {
+          return;
+        }
+
+        let parsed;
+        try {
+          const segments = splitXmlPathSegments(normalizePathLine(String(line))).map(parseSegment);
+          if (segments.length < 3) {
+            return;
+          }
+
+          const root = getLocalName(segments[0].name);
+          if (root !== "X12") {
+            return;
+          }
+
+          const segmentId = getLocalName(segments[1].name).toUpperCase();
+          if (!/^[A-Z0-9]{2,3}$/.test(segmentId)) {
+            return;
+          }
+
+          const elementName = getLocalName(segments[2].name);
+          let position = null;
+          const preferred = elementName.match(new RegExp(`${segmentId}(\\d{2})$`));
+          if (preferred) {
+            position = Number(preferred[1]);
+          } else {
+            const fallback = elementName.match(/(\d{2})$/);
+            if (fallback) {
+              position = Number(fallback[1]);
+            }
+          }
+
+          if (!position || position < 1) {
+            return;
+          }
+
+          parsed = { segmentId, position };
+        } catch {
+          return;
+        }
+
+        if (!segmentMap.has(parsed.segmentId)) {
+          segmentMap.set(parsed.segmentId, new Set());
+        }
+        segmentMap.get(parsed.segmentId).add(parsed.position);
+      });
+
+      if (!segmentMap.size) {
+        return "";
+      }
+
+      const control = new Set(["ISA", "GS", "ST", "SE", "GE", "IEA"]);
+      const dataSegments = Array.from(segmentMap.keys()).filter((id) => !control.has(id));
+      if (!dataSegments.length) {
+        dataSegments.push("B10");
+        segmentMap.set("B10", new Set([1, 2, 3]));
+      }
+
+      const transactionSet = "214";
+      const output = [];
+
+      function emitSegment(segmentId, forceElementCount = 0) {
+        const positions = segmentMap.has(segmentId) ? Array.from(segmentMap.get(segmentId)) : [];
+        for (let i = 1; i <= forceElementCount; i += 1) {
+          if (!positions.includes(i)) {
+            positions.push(i);
+          }
+        }
+
+        const maxPos = positions.length ? Math.max(...positions) : 1;
+        const values = [];
+        for (let pos = 1; pos <= maxPos; pos += 1) {
+          values.push(getSampleEdiElementValue(segmentId, pos, transactionSet));
+        }
+        output.push(`${segmentId}*${values.join("*")}~`);
+      }
+
+      emitSegment("ISA", 16);
+      emitSegment("GS", 8);
+      emitSegment("ST", 2);
+      dataSegments.forEach((segmentId) => emitSegment(segmentId));
+
+      const transactionSegmentCount = 2 + dataSegments.length;
+      output.push(`SE*${transactionSegmentCount}*0001~`);
+      output.push("GE*1*1~");
+      output.push("IEA*1*000000001~");
+
+      return output.join("\n");
+    }
+
     function splitXmlPathSegments(path) {
       const segments = [];
       let current = "";
@@ -1047,8 +1205,10 @@
 
       generateButton.disabled = true;
       downloadButton.disabled = true;
+      downloadEdiButton.disabled = true;
       copyButton.disabled = true;
       generatedXml = "";
+      generatedEdi = "";
       xmlPreview.textContent = "Working...";
       renderWarnings([]);
       setStatus(`Reading ${file.name}...`);
@@ -1057,8 +1217,13 @@
         const lines = await extractLinesFromFile(file);
         const result = createXmlFromLines(lines);
         generatedXml = result.xml;
+        const rootLocalName = getLocalName(result.rootName);
+        if (rootLocalName === "X12") {
+          generatedEdi = buildSampleEdiFromPathLines(lines);
+        }
         xmlPreview.textContent = generatedXml;
         downloadButton.disabled = false;
+        downloadEdiButton.disabled = !generatedEdi;
         copyButton.disabled = false;
 
         let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
@@ -1092,6 +1257,24 @@
       const link = document.createElement("a");
       link.href = url;
       link.download = fileName.endsWith(".xml") ? fileName : `${fileName}.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    downloadEdiButton.addEventListener("click", () => {
+      if (!generatedEdi) {
+        return;
+      }
+
+      const defaultName = (downloadName.value || "generated-sample").trim() || "generated-sample";
+      const fileName = defaultName.replace(/\.xml$/i, "");
+      const blob = new Blob([generatedEdi], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName.endsWith(".edi") ? fileName : `${fileName}.edi`;
       document.body.appendChild(link);
       link.click();
       link.remove();
