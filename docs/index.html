@@ -318,6 +318,11 @@
           </div>
 
           <div class="field">
+            <label for="xsdFile">XSD file (optional)</label>
+            <input id="xsdFile" type="file" accept=".xsd,.xml">
+          </div>
+
+          <div class="field">
             <label for="downloadName">Download file name</label>
             <input id="downloadName" type="text" value="generated-sample.xml" placeholder="generated-sample.xml">
           </div>
@@ -360,6 +365,7 @@
     const inputFile = document.getElementById("inputFile");
     const columnName = document.getElementById("columnName");
     const worksheetName = document.getElementById("worksheetName");
+    const xsdFileInput = document.getElementById("xsdFile");
     const downloadName = document.getElementById("downloadName");
     const generateButton = document.getElementById("generateButton");
     const downloadButton = document.getElementById("downloadButton");
@@ -373,6 +379,7 @@
 
     let generatedXml = "";
     let selectedFile = null;
+    let selectedXsdFile = null;
     let toastTimer = null;
 
     function setSelectedFile(file) {
@@ -402,6 +409,10 @@
       });
     }
 
+    function setSelectedXsdFile(file) {
+      selectedXsdFile = file || null;
+    }
+
     function setStatus(message, isWarn = false) {
       statusBox.textContent = message;
       statusBox.className = isWarn ? "status warn" : "status";
@@ -426,6 +437,145 @@
     inputFile.addEventListener("change", () => {
       setSelectedFile(inputFile.files[0] || null);
     });
+
+    xsdFileInput.addEventListener("change", () => {
+      setSelectedXsdFile(xsdFileInput.files[0] || null);
+    });
+
+    function getChildElementsByName(parent, localName) {
+      return Array.from(parent.children).filter((child) => child.localName === localName);
+    }
+
+    function getXsdDirectChildrenByName(parent, localName) {
+      return Array.from(parent.children).filter((child) => child.namespaceURI === "http://www.w3.org/2001/XMLSchema" && child.localName === localName);
+    }
+
+    function localNameFromQName(name) {
+      if (!name) {
+        return "";
+      }
+
+      const value = String(name);
+      const idx = value.indexOf(":");
+      return idx >= 0 ? value.slice(idx + 1) : value;
+    }
+
+    function parseXmlDocument(text, label) {
+      const doc = new DOMParser().parseFromString(text, "application/xml");
+      const parserError = doc.getElementsByTagName("parsererror")[0];
+      if (parserError) {
+        throw new Error(`${label} is not a valid XML document.`);
+      }
+      return doc;
+    }
+
+    function findRootElementDeclaration(schemaDoc, xmlRootLocalName) {
+      const schema = schemaDoc.documentElement;
+      return getXsdDirectChildrenByName(schema, "element").find((node) => node.getAttribute("name") === xmlRootLocalName);
+    }
+
+    function getElementComplexType(schemaDoc, elementDecl) {
+      const inline = getXsdDirectChildrenByName(elementDecl, "complexType")[0] || null;
+      if (inline) {
+        return inline;
+      }
+
+      const typeName = localNameFromQName(elementDecl.getAttribute("type"));
+      if (!typeName) {
+        return null;
+      }
+
+      const schema = schemaDoc.documentElement;
+      return getXsdDirectChildrenByName(schema, "complexType").find((node) => node.getAttribute("name") === typeName) || null;
+    }
+
+    function collectXsdIssuesForRoot(schemaDoc, xmlDoc) {
+      const issues = [];
+      const xmlRoot = xmlDoc.documentElement;
+      const schema = schemaDoc.documentElement;
+      const targetNamespace = schema.getAttribute("targetNamespace") || "";
+
+      if (targetNamespace && xmlRoot.namespaceURI !== targetNamespace) {
+        issues.push(`Root namespace mismatch. XML: '${xmlRoot.namespaceURI || "(none)"}', XSD: '${targetNamespace}'.`);
+      }
+
+      const rootDecl = findRootElementDeclaration(schemaDoc, xmlRoot.localName);
+      if (!rootDecl) {
+        issues.push(`Root element '${xmlRoot.localName}' was not found in XSD declarations.`);
+        return issues;
+      }
+
+      const complexType = getElementComplexType(schemaDoc, rootDecl);
+      if (!complexType) {
+        return issues;
+      }
+
+      const requiredAttrs = getXsdDirectChildrenByName(complexType, "attribute").filter((attr) => (attr.getAttribute("use") || "optional") === "required");
+      requiredAttrs.forEach((attr) => {
+        const attrName = attr.getAttribute("name");
+        if (attrName && !xmlRoot.hasAttribute(attrName)) {
+          issues.push(`Missing required root attribute '${attrName}'.`);
+        }
+      });
+
+      const sequence = getXsdDirectChildrenByName(complexType, "sequence")[0] || null;
+      if (!sequence) {
+        return issues;
+      }
+
+      const childDecls = getXsdDirectChildrenByName(sequence, "element");
+      childDecls.forEach((childDecl) => {
+        const childName = childDecl.getAttribute("name") || localNameFromQName(childDecl.getAttribute("ref"));
+        if (!childName) {
+          return;
+        }
+
+        const minOccurs = Number.parseInt(childDecl.getAttribute("minOccurs") || "1", 10);
+        const maxOccursRaw = childDecl.getAttribute("maxOccurs") || "1";
+        const count = getChildElementsByName(xmlRoot, childName).length;
+
+        if (count < minOccurs) {
+          issues.push(`Missing required root child element '${childName}' (expected at least ${minOccurs}).`);
+        }
+
+        if (maxOccursRaw !== "unbounded") {
+          const maxOccurs = Number.parseInt(maxOccursRaw, 10);
+          if (count > maxOccurs) {
+            issues.push(`Root child element '${childName}' exceeds maxOccurs (${maxOccurs}).`);
+          }
+        }
+      });
+
+      return issues;
+    }
+
+    async function validateXmlAgainstXsd(xmlText, xsdFile) {
+      const issues = [];
+      if (!xsdFile) {
+        return { ran: false, passed: true, issues };
+      }
+
+      try {
+        const xsdText = await xsdFile.text();
+        const xmlDoc = parseXmlDocument(xmlText, "Generated XML");
+        const xsdDoc = parseXmlDocument(xsdText, "XSD file");
+        const schemaRoot = xsdDoc.documentElement;
+        if (!schemaRoot || schemaRoot.localName !== "schema") {
+          issues.push("Uploaded file is not a valid XSD schema document.");
+          return { ran: true, passed: false, issues };
+        }
+
+        issues.push(...collectXsdIssuesForRoot(xsdDoc, xmlDoc));
+        if (issues.length === 0) {
+          issues.push("XSD checks passed for root element, namespace, and root-level constraints.");
+        }
+
+        return { ran: true, passed: issues.length === 1 && issues[0].startsWith("XSD checks passed"), issues };
+      } catch (error) {
+        issues.push(error.message || "XSD validation failed unexpectedly.");
+        return { ran: true, passed: false, issues };
+      }
+    }
 
     ["dragenter", "dragover"].forEach((eventName) => {
       dropzone.addEventListener(eventName, (event) => {
@@ -940,12 +1090,21 @@
         downloadButton.disabled = false;
         copyButton.disabled = false;
 
-        let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
-        if (result.malformed.length) {
-          message += ` Warnings: ${result.malformed.slice(0, 3).join(" | ")}`;
+        const xsdResult = await validateXmlAgainstXsd(generatedXml, selectedXsdFile);
+        const allWarnings = [...result.malformed];
+        if (xsdResult.ran) {
+          allWarnings.push(...xsdResult.issues);
         }
-        renderWarnings(result.malformed);
-        setStatus(message, result.malformed.length > 0);
+
+        let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
+        if (xsdResult.ran) {
+          message += ` XSD: ${xsdResult.passed ? "Passed" : "Failed"}.`;
+        }
+        if (allWarnings.length) {
+          message += ` Warnings: ${allWarnings.slice(0, 3).join(" | ")}`;
+        }
+        renderWarnings(allWarnings);
+        setStatus(message, allWarnings.length > 0);
       } catch (error) {
         xmlPreview.textContent = "Generation failed.";
         renderWarnings([error.message]);
