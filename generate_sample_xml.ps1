@@ -1,6 +1,7 @@
 $inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\xmlpath.txt"
 $outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
 $ediOutputPath = [System.IO.Path]::ChangeExtension($outputPath, ".edi")
+$sefSchemaPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12-861-4010.sef"
 $xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
 $xlsxValueColumn = "Value"
 $xlsxWorksheetName = $null
@@ -825,6 +826,301 @@ function Get-TransactionSetHintFromInputPath {
     return $null
 }
 
+function Parse-SefSetTokens {
+    param([string]$setExpression)
+
+    $tokens = New-Object System.Collections.Generic.List[object]
+    if ([string]::IsNullOrWhiteSpace($setExpression)) {
+        return [object[]]$tokens.ToArray()
+    }
+
+    $depth = 0
+    for ($index = 0; $index -lt $setExpression.Length; $index++) {
+        $char = $setExpression[$index]
+        if ($char -eq '{') {
+            $depth++
+            continue
+        }
+
+        if ($char -eq '}') {
+            if ($depth -gt 0) { $depth-- }
+            continue
+        }
+
+        if ($char -ne '[' -or $depth -gt 0) {
+            continue
+        }
+
+        $endIndex = $setExpression.IndexOf(']', $index)
+        if ($endIndex -lt 0) {
+            break
+        }
+
+        $content = $setExpression.Substring($index + 1, $endIndex - $index - 1)
+        $parts = @($content.Split(','))
+        if ($parts.Count -eq 0) {
+            $index = $endIndex
+            continue
+        }
+
+        $segmentField = ([string]$parts[0]).Trim()
+        if ([string]::IsNullOrWhiteSpace($segmentField)) {
+            continue
+        }
+
+        $segmentId = ($segmentField.Split('@')[0]).Trim().ToUpperInvariant()
+        if ($segmentId -notmatch '^[A-Z0-9]{2,3}$') {
+            continue
+        }
+
+        $usage = if ($parts.Count -ge 2) { ([string]$parts[1]).Trim().ToUpperInvariant() } else { '' }
+        $maxUseText = if ($parts.Count -ge 3) { ([string]$parts[2]).Trim() } else { '' }
+        $maxUse = 1
+        if ($maxUseText -eq '>1') {
+            $maxUse = 999999
+        } elseif ($maxUseText -match '^\d+$') {
+            $maxUse = [int]$maxUseText
+        }
+
+        $tokens.Add([pscustomobject]@{
+            SegmentId = $segmentId
+            IsRequired = ($usage -eq 'M')
+            MaxUse = $maxUse
+        })
+
+        $index = $endIndex
+    }
+
+    return [object[]]$tokens.ToArray()
+}
+
+function Parse-SefSegmentDefinitions {
+    param([string[]]$lines)
+
+    $definitions = @{}
+    foreach ($line in $lines) {
+        $text = ([string]$line).Trim()
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            continue
+        }
+
+        $equalsIndex = $text.IndexOf('=')
+        if ($equalsIndex -lt 1) {
+            continue
+        }
+
+        $segmentId = $text.Substring(0, $equalsIndex).Trim().ToUpperInvariant()
+        if ($segmentId -notmatch '^[A-Z0-9]{2,3}$') {
+            continue
+        }
+
+        $body = $text.Substring($equalsIndex + 1)
+        $matches = [regex]::Matches($body, '\[([^\]]+)\]')
+        $requiredPositions = New-Object System.Collections.Generic.List[int]
+        $position = 0
+
+        foreach ($match in $matches) {
+            $position++
+            $fields = @($match.Groups[1].Value.Split(','))
+            $usage = if ($fields.Count -ge 2) { ([string]$fields[1]).Trim().ToUpperInvariant() } else { '' }
+            if ($usage -eq 'M') {
+                $requiredPositions.Add($position)
+            }
+        }
+
+        $definitions[$segmentId] = [pscustomobject]@{
+            SegmentId = $segmentId
+            ElementCount = $position
+            RequiredPositions = @($requiredPositions)
+        }
+    }
+
+    return $definitions
+}
+
+function Get-SefSchemaModel {
+    param([string]$schemaPath)
+
+    if ([string]::IsNullOrWhiteSpace($schemaPath) -or -not (Test-Path -LiteralPath $schemaPath)) {
+        return $null
+    }
+
+    $lines = Get-Content -LiteralPath $schemaPath
+    $setExpression = $null
+    $segmentLines = New-Object System.Collections.Generic.List[string]
+    $inSets = $false
+    $inSegs = $false
+
+    foreach ($rawLine in $lines) {
+        $line = [string]$rawLine
+        if ($line -match '^\.SETS') {
+            $inSets = $true
+            $inSegs = $false
+            continue
+        }
+
+        if ($line -match '^\.SEGS') {
+            $inSets = $false
+            $inSegs = $true
+            continue
+        }
+
+        if ($line -match '^\.[A-Z]') {
+            $inSets = $false
+            $inSegs = $false
+            continue
+        }
+
+        if ($inSets -and $line -match '^861=') {
+            $setExpression = $line.Substring(4)
+            continue
+        }
+
+        if ($inSegs) {
+            $segmentLines.Add($line)
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($setExpression)) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        SchemaPath = $schemaPath
+        SetTokens = @(Parse-SefSetTokens -setExpression $setExpression)
+        SegmentDefinitions = Parse-SefSegmentDefinitions -lines @($segmentLines)
+    }
+}
+
+function Parse-EdiSegments {
+    param([string]$ediText)
+
+    $segments = New-Object System.Collections.Generic.List[object]
+    if ([string]::IsNullOrWhiteSpace($ediText)) {
+        return [object[]]$segments.ToArray()
+    }
+
+    $rawSegments = [regex]::Split($ediText, '~\s*')
+    foreach ($rawSegment in $rawSegments) {
+        $segmentText = ([string]$rawSegment).Trim()
+        if ([string]::IsNullOrWhiteSpace($segmentText)) {
+            continue
+        }
+
+        $parts = @([regex]::Split($segmentText, '\*'))
+        $segmentId = ([string]$parts[0]).Trim().ToUpperInvariant()
+        if ($segmentId -notmatch '^[A-Z0-9]{2,3}$') {
+            continue
+        }
+
+        $elements = @()
+        if ($parts.Count -gt 1) {
+            $elements = @($parts[1..($parts.Count - 1)])
+        }
+
+        $segments.Add([pscustomobject]@{
+            SegmentId = $segmentId
+            Elements = $elements
+            RawText = $segmentText
+        })
+    }
+
+    return [object[]]$segments.ToArray()
+}
+
+function Validate-EdiAgainstSef {
+    param(
+        [string]$ediText,
+        [object]$schemaModel
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $warnings = New-Object System.Collections.Generic.List[string]
+
+    if (-not $schemaModel) {
+        $warnings.Add('SEF schema not available. Skipping EDI validation.')
+        return [pscustomobject]@{ Errors = @($errors); Warnings = @($warnings) }
+    }
+
+    $segments = @(Parse-EdiSegments -ediText $ediText)
+    if ($segments.Count -eq 0) {
+        $errors.Add('Generated EDI contains no readable segments.')
+        return [pscustomobject]@{ Errors = @($errors); Warnings = @($warnings) }
+    }
+
+    $setTokens = @($schemaModel.SetTokens)
+    $segmentDefinitions = $schemaModel.SegmentDefinitions
+    $tokenCounts = @{}
+    $patternIndex = 0
+    $topLevelSegmentIds = @{}
+    foreach ($token in $setTokens) {
+        $topLevelSegmentIds[$token.SegmentId] = $true
+    }
+
+    for ($segmentIndex = 0; $segmentIndex -lt $segments.Count; $segmentIndex++) {
+        $segment = $segments[$segmentIndex]
+        $lineNo = $segmentIndex + 1
+
+        if ($segmentDefinitions.ContainsKey($segment.SegmentId)) {
+            $definition = $segmentDefinitions[$segment.SegmentId]
+            if ($segment.Elements.Count -gt $definition.ElementCount) {
+                $errors.Add("Segment $($segment.SegmentId) at position $lineNo has $($segment.Elements.Count) elements, exceeding SEF definition of $($definition.ElementCount).")
+            }
+
+            foreach ($requiredPosition in $definition.RequiredPositions) {
+                $value = if ($segment.Elements.Count -ge $requiredPosition) { [string]$segment.Elements[$requiredPosition - 1] } else { $null }
+                if ($null -eq $value -or $value.Length -eq 0) {
+                    $errors.Add("Segment $($segment.SegmentId) at position $lineNo is missing required element $($segment.SegmentId)$('{0:D2}' -f $requiredPosition).")
+                }
+            }
+        } else {
+            $warnings.Add("Segment $($segment.SegmentId) at position $lineNo is not defined in the loaded SEF.")
+        }
+
+        if ($topLevelSegmentIds.ContainsKey($segment.SegmentId)) {
+            $matched = $false
+            for ($candidateIndex = $patternIndex; $candidateIndex -lt $setTokens.Count; $candidateIndex++) {
+                $candidate = $setTokens[$candidateIndex]
+                if ($candidate.SegmentId -ne $segment.SegmentId) {
+                    continue
+                }
+
+                for ($skippedIndex = $patternIndex; $skippedIndex -lt $candidateIndex; $skippedIndex++) {
+                    $skipped = $setTokens[$skippedIndex]
+                    $skippedCount = if ($tokenCounts.ContainsKey($skippedIndex)) { [int]$tokenCounts[$skippedIndex] } else { 0 }
+                    if ($skipped.IsRequired -and $skippedCount -eq 0) {
+                        $warnings.Add("Segment $($segment.SegmentId) at position $lineNo appears before required segment $($skipped.SegmentId) in the SEF sequence.")
+                    }
+                }
+
+                $currentCount = if ($tokenCounts.ContainsKey($candidateIndex)) { [int]$tokenCounts[$candidateIndex] } else { 0 }
+                if ($currentCount -ge [int]$candidate.MaxUse) {
+                    continue
+                }
+
+                $tokenCounts[$candidateIndex] = $currentCount + 1
+                $patternIndex = $candidateIndex
+                $matched = $true
+                break
+            }
+
+        }
+    }
+
+    for ($index = 0; $index -lt $setTokens.Count; $index++) {
+        $token = $setTokens[$index]
+        $count = if ($tokenCounts.ContainsKey($index)) { [int]$tokenCounts[$index] } else { 0 }
+        if ($token.IsRequired -and $count -eq 0) {
+            $errors.Add("Required segment $($token.SegmentId) is missing according to the SEF 861 definition.")
+        }
+    }
+
+    return [pscustomobject]@{
+        Errors = @($errors)
+        Warnings = @($warnings)
+    }
+}
+
 function Build-SampleEdiFromPathLines {
     param(
         [string[]]$pathLines,
@@ -1518,12 +1814,15 @@ $xmlString = $xmlString -replace ' xmlns:px="urn:px"', ''
 $outputFormat = 'XML'
 $finalOutputPath = $outputPath
 $isX12Root = ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12')
+$ediValidation = $null
 
 if ($isX12Root) {
     $transactionSetHint = Get-TransactionSetHintFromInputPath -path $inputPath
     $ediText = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint -pathValueMap $pathValueMap
     if (-not [string]::IsNullOrWhiteSpace($ediText)) {
         $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
+        $sefSchema = Get-SefSchemaModel -schemaPath $sefSchemaPath
+        $ediValidation = Validate-EdiAgainstSef -ediText $ediText -schemaModel $sefSchema
         $outputFormat = 'EDI'
         $finalOutputPath = $ediOutputPath
     } else {
@@ -1542,6 +1841,16 @@ Write-Output "Lines Read: $($lines.Count)"
 Write-Output "Lines Used: $used"
 Write-Output "Lines Skipped: $skipped"
 Write-Output "Malformed Lines: $($malformed.Count)"
+if ($ediValidation) {
+    Write-Output "Validation Errors: $($ediValidation.Errors.Count)"
+    Write-Output "Validation Warnings: $($ediValidation.Warnings.Count)"
+    foreach ($message in $ediValidation.Errors) {
+        Write-Output "ERROR: $message"
+    }
+    foreach ($message in $ediValidation.Warnings) {
+        Write-Output "WARNING: $message"
+    }
+}
 if ($malformed.Count -gt 0) {
     Write-Output "Malformed Details:"
     foreach ($entry in $malformed) {
