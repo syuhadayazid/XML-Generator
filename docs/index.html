@@ -960,6 +960,8 @@
       const controlElementMaps = new Map();
       const segmentOccurrences = new Map();
       const occurrenceOrder = [];
+      const occurrenceCounters = new Map();
+      const latestOccurrenceByBase = new Map();
       let effectiveTransactionSetHint = String(transactionSetHint ?? "");
 
       lines.forEach((line) => {
@@ -1055,7 +1057,17 @@
           return;
         }
 
-        const occurrenceKey = parsed.occurrenceKey;
+        const baseOccurrenceKey = parsed.occurrenceKey;
+        let occurrenceKey = latestOccurrenceByBase.get(baseOccurrenceKey) || baseOccurrenceKey;
+
+        if (parsed.segmentId === "REF" && parsed.position === 1) {
+          const existingOccurrence = segmentOccurrences.get(occurrenceKey);
+          if (existingOccurrence && existingOccurrence.elements.size > 0) {
+            const nextCount = (occurrenceCounters.get(baseOccurrenceKey) || 0) + 1;
+            occurrenceCounters.set(baseOccurrenceKey, nextCount);
+            occurrenceKey = `${baseOccurrenceKey}#${nextCount}`;
+          }
+        }
 
         if (!segmentOccurrences.has(occurrenceKey)) {
           segmentOccurrences.set(occurrenceKey, {
@@ -1063,6 +1075,10 @@
             elements: new Map()
           });
           occurrenceOrder.push(occurrenceKey);
+        }
+
+        if (parsed.segmentId === "REF") {
+          latestOccurrenceByBase.set(baseOccurrenceKey, occurrenceKey);
         }
 
         const occurrence = segmentOccurrences.get(occurrenceKey);

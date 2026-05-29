@@ -802,6 +802,8 @@ function Build-SampleEdiFromPathLines {
     $controlElementMaps = @{}
     $segmentOccurrences = @{}
     $occurrenceOrder = New-Object System.Collections.Generic.List[string]
+    $occurrenceCounters = @{}
+    $latestOccurrenceByBase = @{}
     $effectiveTransactionSetHint = $transactionSetHint
 
     foreach ($line in $pathLines) {
@@ -900,7 +902,17 @@ function Build-SampleEdiFromPathLines {
         for ($idx = 0; $idx -le $segmentIndex; $idx++) {
             $occurrenceParts.Add((Get-LocalName -name $parsed[$idx].Name))
         }
-        $occurrenceKey = ($occurrenceParts -join '/')
+        $baseOccurrenceKey = ($occurrenceParts -join '/')
+        $occurrenceKey = if ($latestOccurrenceByBase.ContainsKey($baseOccurrenceKey)) { $latestOccurrenceByBase[$baseOccurrenceKey] } else { $baseOccurrenceKey }
+
+        if ($segmentId -eq 'REF' -and $position -eq 1) {
+            $existingOccurrence = if ($segmentOccurrences.ContainsKey($occurrenceKey)) { $segmentOccurrences[$occurrenceKey] } else { $null }
+            if ($existingOccurrence -and $existingOccurrence.Elements.Count -gt 0) {
+                $nextCount = if ($occurrenceCounters.ContainsKey($baseOccurrenceKey)) { [int]$occurrenceCounters[$baseOccurrenceKey] + 1 } else { 1 }
+                $occurrenceCounters[$baseOccurrenceKey] = $nextCount
+                $occurrenceKey = "$baseOccurrenceKey#$nextCount"
+            }
+        }
 
         if (-not $segmentOccurrences.ContainsKey($occurrenceKey)) {
             $segmentOccurrences[$occurrenceKey] = [ordered]@{
@@ -908,6 +920,10 @@ function Build-SampleEdiFromPathLines {
                 Elements = [ordered]@{}
             }
             $occurrenceOrder.Add($occurrenceKey)
+        }
+
+        if ($segmentId -eq 'REF') {
+            $latestOccurrenceByBase[$baseOccurrenceKey] = $occurrenceKey
         }
 
         if (-not $segmentOccurrences[$occurrenceKey].Elements.Contains($positionKey)) {
