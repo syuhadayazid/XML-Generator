@@ -792,6 +792,10 @@
         return "SAMPLE_VALUE";
       }
 
+      if (/^no\s+mapping$/i.test(text)) {
+        return "";
+      }
+
       if (/(format|hardcode|current\s+date|current\s+time|expressed\s+as|for\s+example)/i.test(text)) {
         return "";
       }
@@ -1102,6 +1106,11 @@
           }
 
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
+          if (!explicitValue && segmentId === "PID" && pos >= 2 && pos <= 4) {
+            values.push("");
+            continue;
+          }
+
           const rawValue = explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet);
           values.push(formatEdiElementValue(segmentId, pos, rawValue));
         }

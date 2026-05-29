@@ -90,6 +90,10 @@ function Resolve-EdiMappedValue {
         return 'SAMPLE_VALUE'
     }
 
+    if ($text -match '(?i)^no\s+mapping$') {
+        return $null
+    }
+
     # If the cell looks like a guidance sentence, prefer fallback sample defaults.
     if ($text -match '(?i)(format|hardcode|current\s+date|current\s+time|expressed\s+as|for\s+example)') {
         return $null
@@ -975,6 +979,12 @@ function Build-SampleEdiFromPathLines {
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
                 $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue))
             } else {
+                if ($segmentId -eq 'PID' -and ($pos -ge 2 -and $pos -le 4)) {
+                    # Keep PID02-PID04 intentionally blank when no mapped value is provided.
+                    $values.Add('')
+                    continue
+                }
+
                 $sampleValue = Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet
                 $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue))
             }
