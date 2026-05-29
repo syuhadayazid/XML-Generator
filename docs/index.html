@@ -389,6 +389,7 @@
     const selectedFileTag = document.getElementById("selectedFile");
     const warningList = document.getElementById("warningList");
     const toast = document.getElementById("toast");
+    const valueColumnField = valueColumnName ? valueColumnName.closest(".field") : null;
 
     let generatedXml = "";
     let generatedEdi = "";
@@ -405,6 +406,17 @@
         downloadName.value = `${baseName}-outputXML`;
       } else {
         downloadName.value = "generated-sample.xml";
+      }
+    }
+
+    function updateOutputModeUi() {
+      const selectedOutputMode = (outputMode && outputMode.value) ? outputMode.value : "xml";
+      const useEdiMode = selectedOutputMode === "edi";
+      if (valueColumnName) {
+        valueColumnName.disabled = !useEdiMode;
+      }
+      if (valueColumnField) {
+        valueColumnField.style.opacity = useEdiMode ? "1" : "0.6";
       }
     }
 
@@ -1196,7 +1208,8 @@
       return { xml, used, skipped, malformed, rootName: root.name };
     }
 
-    async function extractLinesFromFile(file) {
+    async function extractLinesFromFile(file, selectedOutputMode = "xml") {
+      const useEdiValueMapping = selectedOutputMode === "edi";
       const ext = file.name.toLowerCase().split(".").pop();
       if (ext === "txt") {
         const text = await file.text();
@@ -1222,7 +1235,7 @@
         }
 
         const wanted = normalizeHeader(columnName.value);
-        const wantedValue = normalizeHeader(valueColumnName.value);
+        const wantedValue = useEdiValueMapping ? normalizeHeader(valueColumnName.value) : "";
         const columnNameProvided = Boolean(wanted);
 
         if (columnNameProvided) {
@@ -1255,7 +1268,7 @@
             const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
             if (resolvedHeader) {
               setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
-              const resolvedValueHeader = wantedValue
+              const resolvedValueHeader = useEdiValueMapping && wantedValue
                 ? headers.find((header) => normalizeHeader(header) === wantedValue)
                 : null;
 
@@ -1263,13 +1276,13 @@
                 .map((row) => String(row[resolvedHeader] ?? "").trim())
                 .filter((value) => value.length > 0);
 
-              if (resolvedValueHeader) {
+              if (useEdiValueMapping && resolvedValueHeader) {
                 rows.forEach((row) => {
                   const path = String(row[resolvedHeader] ?? "").trim();
                   const mappedValue = String(row[resolvedValueHeader] ?? "");
                   addPathValueMapping(path, mappedValue);
                 });
-              } else if (wantedValue) {
+              } else if (useEdiValueMapping && wantedValue) {
                 setStatus(`Path column found but value column '${valueColumnName.value}' was not found. Falling back to sample values for missing EDI elements.`);
               }
 
@@ -1306,6 +1319,8 @@
         return;
       }
 
+      const selectedOutputMode = (outputMode && outputMode.value) ? outputMode.value : "xml";
+
       generateButton.disabled = true;
       downloadButton.disabled = true;
       downloadEdiButton.disabled = true;
@@ -1319,10 +1334,9 @@
       setStatus(`Reading ${file.name}...`);
 
       try {
-        const lines = await extractLinesFromFile(file);
+        const lines = await extractLinesFromFile(file, selectedOutputMode);
         const result = createXmlFromLines(lines);
         generatedXml = result.xml;
-        const selectedOutputMode = (outputMode && outputMode.value) ? outputMode.value : "xml";
         const rootLocalName = getLocalName(result.rootName);
         const hasX12Root = rootLocalName === "X12";
 
@@ -1367,6 +1381,14 @@
       const file = selectedFile || inputFile.files[0];
       await generateFromFile(file);
     });
+
+    if (outputMode) {
+      outputMode.addEventListener("change", () => {
+        updateOutputModeUi();
+      });
+    }
+
+    updateOutputModeUi();
 
     downloadButton.addEventListener("click", () => {
       if (!generatedXml) {
