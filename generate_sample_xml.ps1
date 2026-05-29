@@ -618,8 +618,31 @@ function Get-SampleEdiElementValue {
     }
 }
 
+function Get-TransactionSetHintFromInputPath {
+    param([string]$path)
+
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        return $null
+    }
+
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($path)
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return $null
+    }
+
+    $m = [regex]::Match($name, '(?i)x12[_\-]?(\d{3})')
+    if ($m.Success) {
+        return $m.Groups[1].Value
+    }
+
+    return $null
+}
+
 function Build-SampleEdiFromPathLines {
-    param([string[]]$pathLines)
+    param(
+        [string[]]$pathLines,
+        [string]$transactionSetHint
+    )
 
     $segments = [ordered]@{}
 
@@ -702,8 +725,8 @@ function Build-SampleEdiFromPathLines {
     }
 
     $transactionSet = '214'
-    if ($segments.Contains('ST') -and $segments['ST'].Contains(1)) {
-        $transactionSet = '214'
+    if (-not [string]::IsNullOrWhiteSpace($transactionSetHint) -and $transactionSetHint -match '^\d{3}$') {
+        $transactionSet = $transactionSetHint
     }
 
     $orderedTxnSegments = @('ST') + @($dataSegmentIds) + @('SE')
@@ -1167,7 +1190,8 @@ $finalOutputPath = $outputPath
 $isX12Root = ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12')
 
 if ($isX12Root) {
-    $ediText = Build-SampleEdiFromPathLines -pathLines $lines
+    $transactionSetHint = Get-TransactionSetHintFromInputPath -path $inputPath
+    $ediText = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint
     if (-not [string]::IsNullOrWhiteSpace($ediText)) {
         $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
         $outputFormat = 'EDI'

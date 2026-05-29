@@ -376,6 +376,7 @@
 
     let generatedXml = "";
     let generatedEdi = "";
+    let detectedTransactionSet = "";
     let selectedFile = null;
     let toastTimer = null;
 
@@ -820,7 +821,13 @@
       }
     }
 
-    function buildSampleEdiFromPathLines(lines) {
+    function getTransactionSetHintFromFileName(fileName) {
+      const name = String(fileName ?? "");
+      const match = name.match(/x12[_-]?(\d{3})/i);
+      return match ? match[1] : "";
+    }
+
+    function buildSampleEdiFromPathLines(lines, transactionSetHint) {
       const segmentMap = new Map();
 
       lines.forEach((line) => {
@@ -883,7 +890,7 @@
         segmentMap.set("B10", new Set([1, 2, 3]));
       }
 
-      const transactionSet = "214";
+      const transactionSet = /^\d{3}$/.test(String(transactionSetHint ?? "")) ? String(transactionSetHint) : "214";
       const output = [];
 
       function emitSegment(segmentId, forceElementCount = 0) {
@@ -1246,6 +1253,7 @@
       copyButton.disabled = true;
       generatedXml = "";
       generatedEdi = "";
+      detectedTransactionSet = getTransactionSetHintFromFileName(file.name);
       xmlPreview.textContent = "Working...";
       renderWarnings([]);
       setStatus(`Reading ${file.name}...`);
@@ -1257,7 +1265,7 @@
         const rootLocalName = getLocalName(result.rootName);
         const isEdiOutput = rootLocalName === "X12";
         if (isEdiOutput) {
-          generatedEdi = buildSampleEdiFromPathLines(lines);
+          generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet);
           xmlPreview.textContent = generatedEdi || "EDI generation failed.";
           downloadButton.disabled = true;
           downloadEdiButton.disabled = !generatedEdi;
