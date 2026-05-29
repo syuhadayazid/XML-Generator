@@ -1058,6 +1058,12 @@ function Build-SampleEdiFromPathLines {
                     continue
                 }
 
+                if ($segmentId -eq 'RCD' -and $pos -ge 2) {
+                    # Keep optional trailing RCD elements blank when no mapped value is provided.
+                    $values.Add('')
+                    continue
+                }
+
                 if ($segmentId -eq 'PRF' -and ($pos -ge 2 -and $pos -le 4)) {
                     # Keep PRF02-PRF04 intentionally blank when only PRF01/PRF05 are mapped.
                     $values.Add('')

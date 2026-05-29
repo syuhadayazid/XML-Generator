@@ -1188,6 +1188,11 @@
             continue;
           }
 
+          if (!explicitValue && segmentId === "RCD" && pos >= 2) {
+            values.push("");
+            continue;
+          }
+
           if (!explicitValue && segmentId === "PRF" && pos >= 2 && pos <= 4) {
             values.push("");
             continue;
