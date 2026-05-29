@@ -147,7 +147,8 @@
     }
 
     input[type="file"],
-    input[type="text"] {
+    input[type="text"],
+    select {
       width: 100%;
       padding: 12px 14px;
       border-radius: 12px;
@@ -304,6 +305,14 @@
 
         <div class="tool-grid">
           <div class="field">
+            <label for="outputMode">Output option</label>
+            <select id="outputMode">
+              <option value="xml">Option 1: Generate XML</option>
+              <option value="edi">Option 2: Generate EDI</option>
+            </select>
+          </div>
+
+          <div class="field">
             <label for="inputFile">Input file</label>
             <input id="inputFile" type="file" accept=".txt,.xlsx,.edi,.x12">
           </div>
@@ -365,6 +374,7 @@
 
   <script>
     const inputFile = document.getElementById("inputFile");
+    const outputMode = document.getElementById("outputMode");
     const columnName = document.getElementById("columnName");
     const valueColumnName = document.getElementById("valueColumnName");
     const worksheetName = document.getElementById("worksheetName");
@@ -1312,10 +1322,19 @@
         const lines = await extractLinesFromFile(file);
         const result = createXmlFromLines(lines);
         generatedXml = result.xml;
+        const selectedOutputMode = (outputMode && outputMode.value) ? outputMode.value : "xml";
         const rootLocalName = getLocalName(result.rootName);
         const hasX12Root = rootLocalName === "X12";
+
         if (hasX12Root) {
           generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet, ediPathValueMap);
+        }
+
+        if (selectedOutputMode === "edi") {
+          if (!hasX12Root) {
+            throw new Error("EDI option requires X12-style input paths (root X12).");
+          }
+
           xmlPreview.textContent = generatedEdi || "EDI generation failed.";
           downloadButton.disabled = true;
           downloadEdiButton.disabled = !generatedEdi;
@@ -1327,7 +1346,7 @@
           copyButton.disabled = false;
         }
 
-        let message = hasX12Root
+        let message = (selectedOutputMode === "edi")
           ? `Generated EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
           : `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
