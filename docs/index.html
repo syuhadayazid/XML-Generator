@@ -831,7 +831,7 @@
           }
         case "GS":
           switch (position) {
-            case 1: return "SH";
+            case 1: return "OW";
             case 2: return "SENDER";
             case 3: return "RECEIVER";
             case 4: return new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -869,7 +869,10 @@
     }
 
     function buildSampleEdiFromPathLines(lines, transactionSetHint, pathValueMap) {
-      const segmentMap = new Map();
+      const controlSegments = new Set(["ISA", "GS", "ST", "SE", "GE", "IEA"]);
+      const controlElementMaps = new Map();
+      const segmentOccurrences = new Map();
+      const occurrenceOrder = [];
       let effectiveTransactionSetHint = String(transactionSetHint ?? "");
 
       lines.forEach((line) => {
@@ -931,36 +934,63 @@
             ? String(pathValueMap.get(normalizedPath) ?? "")
             : "";
 
-          parsed = { segmentId, position, mappedValue };
+          const occurrenceParts = [];
+          for (let i = 0; i <= segmentIndex; i += 1) {
+            occurrenceParts.push(getLocalName(segments[i].name));
+          }
+          const occurrenceKey = occurrenceParts.join("/");
+
+          parsed = { segmentId, position, mappedValue, occurrenceKey };
         } catch {
           return;
         }
 
-        if (!segmentMap.has(parsed.segmentId)) {
-          segmentMap.set(parsed.segmentId, new Map());
+        if (controlSegments.has(parsed.segmentId)) {
+          if (!controlElementMaps.has(parsed.segmentId)) {
+            controlElementMaps.set(parsed.segmentId, new Map());
+          }
+
+          const controlMap = controlElementMaps.get(parsed.segmentId);
+          if (!controlMap.has(parsed.position) || !String(controlMap.get(parsed.position) ?? "").trim()) {
+            controlMap.set(parsed.position, parsed.mappedValue);
+          }
+          return;
         }
-        const positionMap = segmentMap.get(parsed.segmentId);
-        if (!positionMap.has(parsed.position) || !String(positionMap.get(parsed.position) ?? "").trim()) {
-          positionMap.set(parsed.position, parsed.mappedValue);
+
+        const occurrenceKey = parsed.occurrenceKey;
+
+        if (!segmentOccurrences.has(occurrenceKey)) {
+          segmentOccurrences.set(occurrenceKey, {
+            segmentId: parsed.segmentId,
+            elements: new Map()
+          });
+          occurrenceOrder.push(occurrenceKey);
+        }
+
+        const occurrence = segmentOccurrences.get(occurrenceKey);
+        if (!occurrence.elements.has(parsed.position) || !String(occurrence.elements.get(parsed.position) ?? "").trim()) {
+          occurrence.elements.set(parsed.position, parsed.mappedValue);
         }
       });
 
-      if (!segmentMap.size) {
+      if (!segmentOccurrences.size && !controlElementMaps.has("ST")) {
         return "";
       }
 
-      const control = new Set(["ISA", "GS", "ST", "SE", "GE", "IEA"]);
-      const dataSegments = Array.from(segmentMap.keys()).filter((id) => !control.has(id));
-      if (!dataSegments.length) {
-        dataSegments.push("B10");
-        segmentMap.set("B10", new Map([[1, ""], [2, ""], [3, ""]]));
+      if (!occurrenceOrder.length) {
+        const fallbackKey = "X12/BRA";
+        segmentOccurrences.set(fallbackKey, {
+          segmentId: "BRA",
+          elements: new Map([[1, ""], [2, ""], [3, ""]])
+        });
+        occurrenceOrder.push(fallbackKey);
       }
 
       const transactionSet = "861";
       const output = [];
 
-      function emitSegment(segmentId, forceElementCount = 0) {
-        const positionMap = segmentMap.has(segmentId) ? new Map(segmentMap.get(segmentId)) : new Map();
+      function emitSegment(segmentId, sourceMap, forceElementCount = 0) {
+        const positionMap = sourceMap ? new Map(sourceMap) : new Map();
         const positions = Array.from(positionMap.keys());
         for (let i = 1; i <= forceElementCount; i += 1) {
           if (!positionMap.has(i)) {
@@ -983,12 +1013,22 @@
         output.push(`${segmentId}*${values.join("*")}~`);
       }
 
-      emitSegment("ISA", 16);
-      emitSegment("GS", 8);
-      emitSegment("ST", 2);
-      dataSegments.forEach((segmentId) => emitSegment(segmentId));
+      emitSegment("ISA", controlElementMaps.get("ISA"), 16);
+      emitSegment("GS", controlElementMaps.get("GS"), 8);
+      emitSegment("ST", controlElementMaps.get("ST"), 2);
 
-      const transactionSegmentCount = 2 + dataSegments.length;
+      let txnDataSegmentCount = 0;
+      occurrenceOrder.forEach((occurrenceKey) => {
+        const occurrence = segmentOccurrences.get(occurrenceKey);
+        if (!occurrence || !occurrence.segmentId || controlSegments.has(occurrence.segmentId)) {
+          return;
+        }
+
+        emitSegment(occurrence.segmentId, occurrence.elements, 0);
+        txnDataSegmentCount += 1;
+      });
+
+      const transactionSegmentCount = 2 + txnDataSegmentCount;
       output.push(`SE*${transactionSegmentCount}*0001~`);
       output.push("GE*1*1~");
       output.push("IEA*1*000000001~");

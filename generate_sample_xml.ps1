@@ -639,7 +639,7 @@ function Get-SampleEdiElementValue {
         }
         'GS' {
             switch ($position) {
-                1 { return 'SH' }
+                1 { return 'OW' }
                 2 { return 'SENDER' }
                 3 { return 'RECEIVER' }
                 4 { return (Get-Date -Format 'yyyyMMdd') }
@@ -706,7 +706,10 @@ function Build-SampleEdiFromPathLines {
         [hashtable]$pathValueMap
     )
 
-    $segments = [ordered]@{}
+    $controlSegments = @('ISA', 'GS', 'ST', 'SE', 'GE', 'IEA')
+    $controlElementMaps = @{}
+    $segmentOccurrences = @{}
+    $occurrenceOrder = New-Object System.Collections.Generic.List[string]
     $effectiveTransactionSetHint = $transactionSetHint
 
     foreach ($line in $pathLines) {
@@ -777,36 +780,52 @@ function Build-SampleEdiFromPathLines {
             continue
         }
 
-        if (-not $segments.Contains($segmentId)) {
-            $segments[$segmentId] = [ordered]@{}
+        $positionKey = [string]$position
+        if ($controlSegments -contains $segmentId) {
+            if (-not $controlElementMaps.ContainsKey($segmentId)) {
+                $controlElementMaps[$segmentId] = [ordered]@{}
+            }
+
+            if (-not $controlElementMaps[$segmentId].Contains($positionKey)) {
+                $controlElementMaps[$segmentId][$positionKey] = $lineValue
+            } elseif ([string]::IsNullOrWhiteSpace([string]$controlElementMaps[$segmentId][$positionKey]) -and -not [string]::IsNullOrWhiteSpace($lineValue)) {
+                $controlElementMaps[$segmentId][$positionKey] = $lineValue
+            }
+            continue
         }
 
-        $positionKey = [string]$position
-        if (-not $segments[$segmentId].Contains($positionKey)) {
-            $segments[$segmentId][$positionKey] = $lineValue
-        } elseif ([string]::IsNullOrWhiteSpace([string]$segments[$segmentId][$positionKey]) -and -not [string]::IsNullOrWhiteSpace($lineValue)) {
-            $segments[$segmentId][$positionKey] = $lineValue
+        $occurrenceParts = New-Object System.Collections.Generic.List[string]
+        for ($idx = 0; $idx -le $segmentIndex; $idx++) {
+            $occurrenceParts.Add((Get-LocalName -name $parsed[$idx].Name))
+        }
+        $occurrenceKey = ($occurrenceParts -join '/')
+
+        if (-not $segmentOccurrences.ContainsKey($occurrenceKey)) {
+            $segmentOccurrences[$occurrenceKey] = [ordered]@{
+                SegmentId = $segmentId
+                Elements = [ordered]@{}
+            }
+            $occurrenceOrder.Add($occurrenceKey)
+        }
+
+        if (-not $segmentOccurrences[$occurrenceKey].Elements.Contains($positionKey)) {
+            $segmentOccurrences[$occurrenceKey].Elements[$positionKey] = $lineValue
+        } elseif ([string]::IsNullOrWhiteSpace([string]$segmentOccurrences[$occurrenceKey].Elements[$positionKey]) -and -not [string]::IsNullOrWhiteSpace($lineValue)) {
+            $segmentOccurrences[$occurrenceKey].Elements[$positionKey] = $lineValue
         }
     }
 
-    if ($segments.Count -eq 0) {
+    if ($segmentOccurrences.Count -eq 0 -and -not $controlElementMaps.ContainsKey('ST')) {
         return $null
     }
 
-    $controlSegments = @('ISA', 'GS', 'ST', 'SE', 'GE', 'IEA')
-    $dataSegmentIds = New-Object System.Collections.Generic.List[string]
-    foreach ($segId in $segments.Keys) {
-        if ($controlSegments -contains $segId) {
-            continue
+    if ($occurrenceOrder.Count -eq 0) {
+        $fallbackKey = 'X12/BRA'
+        $segmentOccurrences[$fallbackKey] = [ordered]@{
+            SegmentId = 'BRA'
+            Elements = [ordered]@{ '1' = $null; '2' = $null; '3' = $null }
         }
-        $dataSegmentIds.Add($segId)
-    }
-
-    if ($dataSegmentIds.Count -eq 0) {
-        $dataSegmentIds.Add('B10')
-        if (-not $segments.Contains('B10')) {
-            $segments['B10'] = [ordered]@{ '1' = $null; '2' = $null; '3' = $null }
-        }
+        $occurrenceOrder.Add($fallbackKey)
     }
 
     $transactionSet = '861'
@@ -814,17 +833,15 @@ function Build-SampleEdiFromPathLines {
         Write-Warning "EDI generator currently supports transaction set 861 only. Ignoring detected transaction set '$effectiveTransactionSetHint'."
     }
 
-    $orderedTxnSegments = @('ST') + @($dataSegmentIds) + @('SE')
-
     $segmentLines = New-Object System.Collections.Generic.List[string]
 
     $emitSegment = {
-        param([string]$segmentId, [int]$forceElementCount)
+        param([string]$segmentId, [hashtable]$sourceMap, [int]$forceElementCount)
 
         $elementMap = [ordered]@{}
-        if ($segments.Contains($segmentId)) {
-            foreach ($k in $segments[$segmentId].Keys) {
-                $elementMap[[string]$k] = $segments[$segmentId][$k]
+        if ($sourceMap) {
+            foreach ($k in $sourceMap.Keys) {
+                $elementMap[[string]$k] = $sourceMap[$k]
             }
         }
 
@@ -872,15 +889,28 @@ function Build-SampleEdiFromPathLines {
         $segmentLines.Add($segmentText)
     }
 
-    & $emitSegment 'ISA' 16
-    & $emitSegment 'GS' 8
-    & $emitSegment 'ST' 2
+    $isaMap = if ($controlElementMaps.ContainsKey('ISA')) { $controlElementMaps['ISA'] } else { $null }
+    $gsMap = if ($controlElementMaps.ContainsKey('GS')) { $controlElementMaps['GS'] } else { $null }
+    $stMap = if ($controlElementMaps.ContainsKey('ST')) { $controlElementMaps['ST'] } else { $null }
 
-    foreach ($segId in $dataSegmentIds) {
-        & $emitSegment $segId 0
+    & $emitSegment 'ISA' $isaMap 16
+    & $emitSegment 'GS' $gsMap 8
+    & $emitSegment 'ST' $stMap 2
+
+    $txnDataSegmentCount = 0
+    foreach ($occurrenceKey in $occurrenceOrder) {
+        $occurrence = $segmentOccurrences[$occurrenceKey]
+        if (-not $occurrence) { continue }
+
+        $occurrenceSegmentId = [string]$occurrence.SegmentId
+        if ([string]::IsNullOrWhiteSpace($occurrenceSegmentId)) { continue }
+        if ($controlSegments -contains $occurrenceSegmentId) { continue }
+
+        & $emitSegment $occurrenceSegmentId $occurrence.Elements 0
+        $txnDataSegmentCount++
     }
 
-    $txnSegmentCount = $orderedTxnSegments.Count
+    $txnSegmentCount = 2 + $txnDataSegmentCount
     $seLine = "SE*$txnSegmentCount*0001~"
     $segmentLines.Add($seLine)
     $segmentLines.Add('GE*1*1~')
