@@ -738,6 +738,27 @@ function Get-SampleEdiElementValue {
     }
 }
 
+function Format-EdiElementValue {
+    param(
+        [string]$segmentId,
+        [int]$position,
+        [string]$value
+    )
+
+    $text = [string]$value
+
+    # X12 ISA sender/receiver IDs are fixed-width 15 characters.
+    if ($segmentId -eq 'ISA' -and ($position -eq 6 -or $position -eq 8)) {
+        if ($text.Length -lt 15) {
+            return $text.PadRight(15)
+        }
+
+        return $text.Substring(0, [Math]::Min(15, $text.Length))
+    }
+
+    return $text
+}
+
 function Get-TransactionSetHintFromInputPath {
     param([string]$path)
 
@@ -808,16 +829,26 @@ function Build-SampleEdiFromPathLines {
         }
 
         $segmentIndex = 1
-        $elementIndex = 2
         $tsNodeName = Get-LocalName -name $parsed[1].Name
         if ($parsed.Count -ge 4 -and $tsNodeName -match '^TS_(\d{3})$') {
             $segmentIndex = 2
-            $elementIndex = 3
             if ([string]::IsNullOrWhiteSpace($effectiveTransactionSetHint)) {
                 $effectiveTransactionSetHint = $Matches[1]
             }
         }
 
+        # Skip loop container nodes such as GROUP_1, GROUP_2, etc.
+        while ($segmentIndex -lt ($parsed.Count - 1)) {
+            $candidateSegmentName = Get-LocalName -name $parsed[$segmentIndex].Name
+            if ($candidateSegmentName -match '^GROUP_\d+$') {
+                $segmentIndex++
+                continue
+            }
+
+            break
+        }
+
+        $elementIndex = $segmentIndex + 1
         if ($parsed.Count -le $elementIndex) {
             continue
         }
@@ -934,9 +965,10 @@ function Build-SampleEdiFromPathLines {
             }
 
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
-                $values.Add($explicitValue)
+                $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue))
             } else {
-                $values.Add((Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet))
+                $sampleValue = Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet
+                $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue))
             }
         }
 

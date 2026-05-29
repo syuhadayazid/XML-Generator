@@ -920,6 +920,21 @@
       }
     }
 
+    function formatEdiElementValue(segmentId, position, value) {
+      const text = String(value ?? "");
+
+      // X12 ISA sender/receiver IDs are fixed-width 15 characters.
+      if (segmentId === "ISA" && (position === 6 || position === 8)) {
+        if (text.length < 15) {
+          return text.padEnd(15, " ");
+        }
+
+        return text.slice(0, 15);
+      }
+
+      return text;
+    }
+
     function getTransactionSetHintFromFileName(fileName) {
       const name = String(fileName ?? "");
       const match = name.match(/x12[_-]?(\d{3})/i);
@@ -951,16 +966,27 @@
           }
 
           let segmentIndex = 1;
-          let elementIndex = 2;
           const tsNodeName = getLocalName(segments[1].name);
           const tsMatch = tsNodeName.match(/^TS_(\d{3})$/i);
           if (segments.length >= 4 && tsMatch) {
             segmentIndex = 2;
-            elementIndex = 3;
             if (!effectiveTransactionSetHint) {
               effectiveTransactionSetHint = tsMatch[1];
             }
           }
+
+          // Skip loop container nodes such as GROUP_1, GROUP_2, etc.
+          while (segmentIndex < (segments.length - 1)) {
+            const candidateSegmentName = getLocalName(segments[segmentIndex].name);
+            if (/^GROUP_\d+$/i.test(candidateSegmentName)) {
+              segmentIndex += 1;
+              continue;
+            }
+
+            break;
+          }
+
+          const elementIndex = segmentIndex + 1;
 
           if (segments.length <= elementIndex) {
             return;
@@ -1061,12 +1087,13 @@
         const values = [];
         for (let pos = 1; pos <= maxPos; pos += 1) {
           if (segmentId === "ST" && pos === 1) {
-            values.push(transactionSet);
+            values.push(formatEdiElementValue(segmentId, pos, transactionSet));
             continue;
           }
 
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
-          values.push(explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet));
+          const rawValue = explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet);
+          values.push(formatEdiElementValue(segmentId, pos, rawValue));
         }
         output.push(`${segmentId}*${values.join("*")}~`);
       }
