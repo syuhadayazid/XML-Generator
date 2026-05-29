@@ -713,6 +713,9 @@
 
     function normalizePathLine(line) {
       let clean = (line || "").trim();
+      if (clean && !clean.startsWith("/")) {
+        clean = `/${clean}`;
+      }
       clean = clean.replace(/\/px:px:/g, "/px:");
       clean = clean.replace(/px:\/Shipment/g, "px:Shipment");
       clean = clean.replace(/(\[[^\]]+\])(?=[A-Za-z_])/g, "$1/");
@@ -992,6 +995,30 @@
         }
 
         return text.slice(0, 15);
+      }
+
+      if (segmentId === "ISA" && position === 9) {
+        if (/^\d{8}$/.test(text)) {
+          return text.slice(2);
+        }
+
+        if (/^\d{6}$/.test(text)) {
+          return text;
+        }
+
+        const now = new Date();
+        return String(now.getFullYear()).slice(2)
+          + String(now.getMonth() + 1).padStart(2, "0")
+          + String(now.getDate()).padStart(2, "0");
+      }
+
+      if (segmentId === "ISA" && position === 10) {
+        if (/^\d{4}$/.test(text)) {
+          return text;
+        }
+
+        const now = new Date();
+        return String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
       }
 
       return text;
