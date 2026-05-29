@@ -1266,15 +1266,19 @@
         const hasX12Root = rootLocalName === "X12";
         if (hasX12Root) {
           generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet);
+          xmlPreview.textContent = generatedEdi || "EDI generation failed.";
+          downloadButton.disabled = true;
+          downloadEdiButton.disabled = !generatedEdi;
+          copyButton.disabled = true;
+        } else {
+          xmlPreview.textContent = generatedXml;
+          downloadButton.disabled = false;
+          downloadEdiButton.disabled = true;
+          copyButton.disabled = false;
         }
 
-        xmlPreview.textContent = generatedXml;
-        downloadButton.disabled = false;
-        downloadEdiButton.disabled = !generatedEdi;
-        copyButton.disabled = false;
-
-        let message = hasX12Root && generatedEdi
-          ? `Generated XML and EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
+        let message = hasX12Root
+          ? `Generated EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
           : `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
           message += ` Warnings (${result.malformed.length}): ${summarizeWarnings(result.malformed, 3)}`;
