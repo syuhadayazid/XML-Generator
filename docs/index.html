@@ -764,6 +764,21 @@
         return match[1].trim();
       }
 
+      match = text.match(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/);
+      if (match) {
+        return `${match[1]}${match[2]}${match[3]}`;
+      }
+
+      match = text.match(/\b(\d{8})\b/);
+      if (match) {
+        return match[1];
+      }
+
+      match = text.match(/\b(\d{2})[-/](\d{2})[-/](\d{4})\b/);
+      if (match) {
+        return `${match[3]}${match[1]}${match[2]}`;
+      }
+
       match = text.match(/^([A-Za-z0-9_-]+)\s*=\s*.+$/);
       if (match) {
         return match[1].trim();
@@ -930,6 +945,22 @@
         case "IEA":
           if (position === 1) { return "1"; }
           if (position === 2) { return "000000001"; }
+          return "SAMPLE_VALUE";
+        case "DTM":
+          if (position === 1) { return "050"; }
+          if (position === 2) {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, "0");
+            const dd = String(now.getDate()).padStart(2, "0");
+            return `${yyyy}${mm}${dd}`;
+          }
+          if (position === 3) {
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, "0");
+            const min = String(now.getMinutes()).padStart(2, "0");
+            return `${hh}${min}`;
+          }
           return "SAMPLE_VALUE";
         default:
           return "SAMPLE_VALUE";

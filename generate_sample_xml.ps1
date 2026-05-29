@@ -62,6 +62,18 @@ function Resolve-EdiMappedValue {
         return $Matches[1].Trim()
     }
 
+    if ($text -match '\b(\d{4})[-/](\d{2})[-/](\d{2})\b') {
+        return "$($Matches[1])$($Matches[2])$($Matches[3])"
+    }
+
+    if ($text -match '\b(\d{8})\b') {
+        return $Matches[1]
+    }
+
+    if ($text -match '\b(\d{2})[-/](\d{2})[-/](\d{4})\b') {
+        return "$($Matches[3])$($Matches[1])$($Matches[2])"
+    }
+
     if ($text -match '^([A-Za-z0-9_\-]+)\s*=\s*.+$') {
         return $Matches[1]
     }
@@ -743,6 +755,12 @@ function Get-SampleEdiElementValue {
         'IEA' {
             if ($position -eq 1) { return '1' }
             if ($position -eq 2) { return '000000001' }
+            return 'SAMPLE_VALUE'
+        }
+        'DTM' {
+            if ($position -eq 1) { return '050' }
+            if ($position -eq 2) { return (Get-Date -Format 'yyyyMMdd') }
+            if ($position -eq 3) { return (Get-Date -Format 'HHmm') }
             return 'SAMPLE_VALUE'
         }
         default {
