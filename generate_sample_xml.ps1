@@ -22,6 +22,9 @@ function Normalize-PathForLookup {
     param([string]$line)
 
     $clean = ([string]$line).Trim()
+    if ($clean -and -not $clean.StartsWith('/')) {
+        $clean = '/' + $clean
+    }
     while ($clean -match '(^|/)px:px:') {
         $clean = $clean -replace '(^|/)px:px:', '$1px:'
     }
@@ -801,6 +804,26 @@ function Format-EdiElementValue {
         }
 
         return $text.Substring(0, [Math]::Min(15, $text.Length))
+    }
+
+    if ($segmentId -eq 'ISA' -and $position -eq 9) {
+        if ($text -match '^\d{8}$') {
+            return $text.Substring(2, 6)
+        }
+
+        if ($text -match '^\d{6}$') {
+            return $text
+        }
+
+        return (Get-Date -Format 'yyMMdd')
+    }
+
+    if ($segmentId -eq 'ISA' -and $position -eq 10) {
+        if ($text -match '^\d{4}$') {
+            return $text
+        }
+
+        return (Get-Date -Format 'HHmm')
     }
 
     return $text
