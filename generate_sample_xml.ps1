@@ -498,7 +498,11 @@ function Get-InputLines {
                 if (-not [string]::IsNullOrWhiteSpace($mappedValue)) {
                     $lookupKey = Normalize-PathForLookup -line $trimmedPath
                     if (-not $pathValues.ContainsKey($lookupKey)) {
-                        $pathValues[$lookupKey] = ([string]$mappedValue).Trim()
+                        $pathValues[$lookupKey] = New-Object System.Collections.Queue
+                    }
+
+                    if ($pathValues[$lookupKey] -is [System.Collections.Queue]) {
+                        $pathValues[$lookupKey].Enqueue(([string]$mappedValue).Trim())
                     }
                 }
             }
@@ -815,7 +819,18 @@ function Build-SampleEdiFromPathLines {
         $lineValue = $null
         $lookupKey = Normalize-PathForLookup -line $clean
         if ($pathValueMap -and $pathValueMap.ContainsKey($lookupKey)) {
-            $lineValue = [string]$pathValueMap[$lookupKey]
+            $mappedEntry = $pathValueMap[$lookupKey]
+            if ($mappedEntry -is [System.Collections.Queue]) {
+                if ($mappedEntry.Count -gt 0) {
+                    $lineValue = [string]$mappedEntry.Dequeue()
+                }
+            } elseif ($mappedEntry -is [System.Collections.IList]) {
+                if ($mappedEntry.Count -gt 0) {
+                    $lineValue = [string]$mappedEntry[0]
+                }
+            } else {
+                $lineValue = [string]$mappedEntry
+            }
         }
         $split = Split-XmlPathSegments -path $clean
         if (-not $split.Valid -or $split.Segments.Count -lt 3) {

@@ -727,8 +727,10 @@
       }
 
       if (!ediPathValueMap.has(normalizedPath)) {
-        ediPathValueMap.set(normalizedPath, mappedValue);
+        ediPathValueMap.set(normalizedPath, []);
       }
+
+      ediPathValueMap.get(normalizedPath).push(mappedValue);
     }
 
     function resolveEdiMappedValue(rawValue) {
@@ -962,6 +964,7 @@
       const occurrenceOrder = [];
       const occurrenceCounters = new Map();
       const latestOccurrenceByBase = new Map();
+      const pathValueCursor = new Map();
       let effectiveTransactionSetHint = String(transactionSetHint ?? "");
 
       lines.forEach((line) => {
@@ -1030,9 +1033,18 @@
           }
 
           const normalizedPath = normalizePathLine(String(line));
-          const mappedValue = pathValueMap && pathValueMap.has(normalizedPath)
-            ? String(pathValueMap.get(normalizedPath) ?? "")
-            : "";
+          let mappedValue = "";
+          if (pathValueMap && pathValueMap.has(normalizedPath)) {
+            const values = pathValueMap.get(normalizedPath);
+            if (Array.isArray(values) && values.length > 0) {
+              const cursor = pathValueCursor.get(normalizedPath) || 0;
+              const valueIndex = Math.min(cursor, values.length - 1);
+              mappedValue = String(values[valueIndex] ?? "");
+              pathValueCursor.set(normalizedPath, cursor + 1);
+            } else {
+              mappedValue = String(values ?? "");
+            }
+          }
 
           const occurrenceParts = [];
           for (let i = 0; i <= segmentIndex; i += 1) {
