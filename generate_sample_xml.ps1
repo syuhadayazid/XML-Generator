@@ -416,6 +416,10 @@ function Get-InputLines {
             }
 
             $trimmedPath = $pathValue.Trim()
+            if ($trimmedPath -notmatch '^\s*/?[A-Za-z_][\w:\-]*(/|\[)') {
+                continue
+            }
+
             $result.Add($trimmedPath)
 
             if ($resolvedValueColumn) {
@@ -703,6 +707,7 @@ function Build-SampleEdiFromPathLines {
     )
 
     $segments = [ordered]@{}
+    $effectiveTransactionSetHint = $transactionSetHint
 
     foreach ($line in $pathLines) {
         if ([string]::IsNullOrWhiteSpace($line)) {
@@ -740,12 +745,27 @@ function Build-SampleEdiFromPathLines {
             continue
         }
 
-        $segmentId = (Get-LocalName -name $parsed[1].Name).ToUpperInvariant()
+        $segmentIndex = 1
+        $elementIndex = 2
+        $tsNodeName = Get-LocalName -name $parsed[1].Name
+        if ($parsed.Count -ge 4 -and $tsNodeName -match '^TS_(\d{3})$') {
+            $segmentIndex = 2
+            $elementIndex = 3
+            if ([string]::IsNullOrWhiteSpace($effectiveTransactionSetHint)) {
+                $effectiveTransactionSetHint = $Matches[1]
+            }
+        }
+
+        if ($parsed.Count -le $elementIndex) {
+            continue
+        }
+
+        $segmentId = (Get-LocalName -name $parsed[$segmentIndex].Name).ToUpperInvariant()
         if ([string]::IsNullOrWhiteSpace($segmentId) -or $segmentId -notmatch '^[A-Z0-9]{2,3}$') {
             continue
         }
 
-        $elementName = Get-LocalName -name $parsed[2].Name
+        $elementName = Get-LocalName -name $parsed[$elementIndex].Name
         $position = $null
         if ($elementName -match ([regex]::Escape($segmentId) + '(\d{2})$')) {
             $position = [int]$Matches[1]
@@ -790,8 +810,8 @@ function Build-SampleEdiFromPathLines {
     }
 
     $transactionSet = '214'
-    if (-not [string]::IsNullOrWhiteSpace($transactionSetHint) -and $transactionSetHint -match '^\d{3}$') {
-        $transactionSet = $transactionSetHint
+    if (-not [string]::IsNullOrWhiteSpace($effectiveTransactionSetHint) -and $effectiveTransactionSetHint -match '^\d{3}$') {
+        $transactionSet = $effectiveTransactionSetHint
     }
 
     $orderedTxnSegments = @('ST') + @($dataSegmentIds) + @('SE')

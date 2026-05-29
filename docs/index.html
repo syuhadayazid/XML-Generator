@@ -870,6 +870,7 @@
 
     function buildSampleEdiFromPathLines(lines, transactionSetHint, pathValueMap) {
       const segmentMap = new Map();
+      let effectiveTransactionSetHint = String(transactionSetHint ?? "");
 
       lines.forEach((line) => {
         if (!line || !String(line).trim()) {
@@ -888,12 +889,28 @@
             return;
           }
 
-          const segmentId = getLocalName(segments[1].name).toUpperCase();
+          let segmentIndex = 1;
+          let elementIndex = 2;
+          const tsNodeName = getLocalName(segments[1].name);
+          const tsMatch = tsNodeName.match(/^TS_(\d{3})$/i);
+          if (segments.length >= 4 && tsMatch) {
+            segmentIndex = 2;
+            elementIndex = 3;
+            if (!effectiveTransactionSetHint) {
+              effectiveTransactionSetHint = tsMatch[1];
+            }
+          }
+
+          if (segments.length <= elementIndex) {
+            return;
+          }
+
+          const segmentId = getLocalName(segments[segmentIndex].name).toUpperCase();
           if (!/^[A-Z0-9]{2,3}$/.test(segmentId)) {
             return;
           }
 
-          const elementName = getLocalName(segments[2].name);
+          const elementName = getLocalName(segments[elementIndex].name);
           let position = null;
           const preferred = elementName.match(new RegExp(`${segmentId}(\\d{2})$`));
           if (preferred) {
@@ -939,7 +956,7 @@
         segmentMap.set("B10", new Map([[1, ""], [2, ""], [3, ""]]));
       }
 
-      const transactionSet = /^\d{3}$/.test(String(transactionSetHint ?? "")) ? String(transactionSetHint) : "214";
+      const transactionSet = /^\d{3}$/.test(String(effectiveTransactionSetHint ?? "")) ? String(effectiveTransactionSetHint) : "214";
       const output = [];
 
       function emitSegment(segmentId, forceElementCount = 0) {
@@ -1274,7 +1291,8 @@
 
               const pathLines = rows
                 .map((row) => String(row[resolvedHeader] ?? "").trim())
-                .filter((value) => value.length > 0);
+                .filter((value) => value.length > 0)
+                .filter((value) => isPathLikeValue(value));
 
               if (useEdiValueMapping && resolvedValueHeader) {
                 rows.forEach((row) => {
