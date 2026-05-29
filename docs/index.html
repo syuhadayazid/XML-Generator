@@ -764,6 +764,11 @@
         return match[1].trim();
       }
 
+      match = text.match(/\bshould\s+be\s+([A-Za-z0-9_-]+)\b/i);
+      if (match) {
+        return match[1].trim();
+      }
+
       match = text.match(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/);
       if (match) {
         return `${match[1]}${match[2]}${match[3]}`;
@@ -1181,10 +1186,19 @@
       emitSegment("ST", controlElementMaps.get("ST"), 2);
 
       let txnDataSegmentCount = 0;
+      let dtmOccurrenceIndex = 0;
       occurrenceOrder.forEach((occurrenceKey) => {
         const occurrence = segmentOccurrences.get(occurrenceKey);
         if (!occurrence || !occurrence.segmentId || controlSegments.has(occurrence.segmentId)) {
           return;
+        }
+
+        if (occurrence.segmentId === "DTM") {
+          dtmOccurrenceIndex += 1;
+          const dtm01 = String(occurrence.elements.get(1) ?? "").trim();
+          if (!dtm01) {
+            occurrence.elements.set(1, dtmOccurrenceIndex === 1 ? "050" : "922");
+          }
         }
 
         emitSegment(occurrence.segmentId, occurrence.elements, 0);

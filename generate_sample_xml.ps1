@@ -62,6 +62,10 @@ function Resolve-EdiMappedValue {
         return $Matches[1].Trim()
     }
 
+    if ($text -match '(?i)\bshould\s+be\s+([A-Za-z0-9_\-]+)\b') {
+        return $Matches[1].Trim()
+    }
+
     if ($text -match '\b(\d{4})[-/](\d{2})[-/](\d{2})\b') {
         return "$($Matches[1])$($Matches[2])$($Matches[3])"
     }
@@ -1056,6 +1060,7 @@ function Build-SampleEdiFromPathLines {
     & $emitSegment 'ST' $stMap 2
 
     $txnDataSegmentCount = 0
+    $dtmOccurrenceIndex = 0
     foreach ($occurrenceKey in $occurrenceOrder) {
         $occurrence = $segmentOccurrences[$occurrenceKey]
         if (-not $occurrence) { continue }
@@ -1063,6 +1068,18 @@ function Build-SampleEdiFromPathLines {
         $occurrenceSegmentId = [string]$occurrence.SegmentId
         if ([string]::IsNullOrWhiteSpace($occurrenceSegmentId)) { continue }
         if ($controlSegments -contains $occurrenceSegmentId) { continue }
+
+        if ($occurrenceSegmentId -eq 'DTM') {
+            $dtmOccurrenceIndex++
+            $dtm01 = $null
+            if ($occurrence.Elements.Contains('1')) {
+                $dtm01 = [string]$occurrence.Elements['1']
+            }
+
+            if ([string]::IsNullOrWhiteSpace($dtm01)) {
+                $occurrence.Elements['1'] = if ($dtmOccurrenceIndex -eq 1) { '050' } else { '922' }
+            }
+        }
 
         & $emitSegment $occurrenceSegmentId $occurrence.Elements 0
         $txnDataSegmentCount++
