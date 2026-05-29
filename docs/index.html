@@ -1164,6 +1164,7 @@
       function emitSegment(segmentId, sourceMap, forceElementCount = 0) {
         const positionMap = sourceMap ? new Map(sourceMap) : new Map();
         const positions = Array.from(positionMap.keys());
+        const presentPositions = Array.from(positionMap.keys()).map((value) => Number(value));
         for (let i = 1; i <= forceElementCount; i += 1) {
           if (!positionMap.has(i)) {
             positionMap.set(i, "");
@@ -1180,6 +1181,18 @@
           }
 
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
+          const hasLowerPresent = presentPositions.some((presentPos) => presentPos < pos);
+          const hasHigherPresent = presentPositions.some((presentPos) => presentPos > pos);
+          if (!explicitValue && !controlSegments.has(segmentId) && hasLowerPresent && hasHigherPresent) {
+            values.push("");
+            continue;
+          }
+
+          if (!explicitValue && segmentId === "PRF" && pos >= 2 && pos <= 4) {
+            values.push("");
+            continue;
+          }
+
           if (!explicitValue && segmentId === "PID" && pos >= 2 && pos <= 4) {
             values.push("");
             continue;

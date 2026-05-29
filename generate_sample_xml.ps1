@@ -1021,6 +1021,11 @@ function Build-SampleEdiFromPathLines {
             $elementMap['1'] = $null
         }
 
+        $presentPositions = New-Object System.Collections.Generic.List[int]
+        foreach ($k in $elementMap.Keys) {
+            $presentPositions.Add([int]$k)
+        }
+
         $maxPos = (($elementMap.Keys | ForEach-Object { [int]$_ }) | Measure-Object -Maximum).Maximum
         if (-not $maxPos) { $maxPos = 1 }
 
@@ -1040,6 +1045,25 @@ function Build-SampleEdiFromPathLines {
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
                 $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue))
             } else {
+                $hasLowerPresent = $false
+                $hasHigherPresent = $false
+                foreach ($presentPos in $presentPositions) {
+                    if ($presentPos -lt $pos) { $hasLowerPresent = $true }
+                    if ($presentPos -gt $pos) { $hasHigherPresent = $true }
+                }
+
+                if (($controlSegments -notcontains $segmentId) -and $hasLowerPresent -and $hasHigherPresent) {
+                    # Keep sparse interior element gaps blank when this position is not mapped.
+                    $values.Add('')
+                    continue
+                }
+
+                if ($segmentId -eq 'PRF' -and ($pos -ge 2 -and $pos -le 4)) {
+                    # Keep PRF02-PRF04 intentionally blank when only PRF01/PRF05 are mapped.
+                    $values.Add('')
+                    continue
+                }
+
                 if ($segmentId -eq 'PID' -and ($pos -ge 2 -and $pos -le 4)) {
                     # Keep PID02-PID04 intentionally blank when no mapped value is provided.
                     $values.Add('')
