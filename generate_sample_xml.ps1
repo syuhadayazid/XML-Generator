@@ -54,6 +54,14 @@ function Resolve-EdiMappedValue {
         return $Matches[1].Trim()
     }
 
+    if ($text -match '(?i)^default\s+is\s*["'']([^"'']+)["'']') {
+        return $Matches[1].Trim()
+    }
+
+    if ($text -match '(?i)^default\s+is\s+([A-Za-z0-9_\-]+)') {
+        return $Matches[1].Trim()
+    }
+
     if ($text -match '^([A-Za-z0-9_\-]+)\s*=\s*.+$') {
         return $Matches[1]
     }

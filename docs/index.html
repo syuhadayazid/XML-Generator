@@ -752,6 +752,16 @@
         return match[1].trim();
       }
 
+      match = text.match(/^default\s+is\s*["']([^"']+)["']/i);
+      if (match) {
+        return match[1].trim();
+      }
+
+      match = text.match(/^default\s+is\s+([A-Za-z0-9_-]+)/i);
+      if (match) {
+        return match[1].trim();
+      }
+
       match = text.match(/^([A-Za-z0-9_-]+)\s*=\s*.+$/);
       if (match) {
         return match[1].trim();
