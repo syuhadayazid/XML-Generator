@@ -340,7 +340,7 @@
 
         <div class="output-grid">
           <section class="output">
-            <h3>Generated XML</h3>
+            <h3>Generated Output</h3>
             <pre id="xmlPreview">Generate XML to preview the output here.</pre>
           </section>
           <section class="output">
@@ -1255,15 +1255,23 @@
         const result = createXmlFromLines(lines);
         generatedXml = result.xml;
         const rootLocalName = getLocalName(result.rootName);
-        if (rootLocalName === "X12") {
+        const isEdiOutput = rootLocalName === "X12";
+        if (isEdiOutput) {
           generatedEdi = buildSampleEdiFromPathLines(lines);
+          xmlPreview.textContent = generatedEdi || "EDI generation failed.";
+          downloadButton.disabled = true;
+          downloadEdiButton.disabled = !generatedEdi;
+          copyButton.disabled = true;
+        } else {
+          xmlPreview.textContent = generatedXml;
+          downloadButton.disabled = false;
+          downloadEdiButton.disabled = true;
+          copyButton.disabled = false;
         }
-        xmlPreview.textContent = generatedXml;
-        downloadButton.disabled = false;
-        downloadEdiButton.disabled = !generatedEdi;
-        copyButton.disabled = false;
 
-        let message = `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
+        let message = isEdiOutput
+          ? `Generated EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
+          : `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
           message += ` Warnings (${result.malformed.length}): ${summarizeWarnings(result.malformed, 3)}`;
         }

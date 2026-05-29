@@ -1161,27 +1161,33 @@ $writer.Close()
 
 $xmlString = [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
 $xmlString = $xmlString -replace ' xmlns:px="urn:px"', ''
-$xmlString | Out-File -FilePath $outputPath -Encoding UTF8
 
-$ediWritten = $false
-if ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12') {
+$outputFormat = 'XML'
+$finalOutputPath = $outputPath
+$isX12Root = ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12')
+
+if ($isX12Root) {
     $ediText = Build-SampleEdiFromPathLines -pathLines $lines
     if (-not [string]::IsNullOrWhiteSpace($ediText)) {
         $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
-        $ediWritten = $true
+        $outputFormat = 'EDI'
+        $finalOutputPath = $ediOutputPath
+    } else {
+        Write-Warning "X12 root detected but EDI output could not be constructed. Falling back to XML output."
+        $xmlString | Out-File -FilePath $outputPath -Encoding UTF8
     }
+} else {
+    $xmlString | Out-File -FilePath $outputPath -Encoding UTF8
 }
 
 Write-Output "Summary:"
-Write-Output "Output Path: $outputPath"
+Write-Output "Output Format: $outputFormat"
+Write-Output "Output Path: $finalOutputPath"
 Write-Output "Detected Root: $($root.Name)"
 Write-Output "Lines Read: $($lines.Count)"
 Write-Output "Lines Used: $used"
 Write-Output "Lines Skipped: $skipped"
 Write-Output "Malformed Lines: $($malformed.Count)"
-if ($ediWritten) {
-    Write-Output "EDI Output Path: $ediOutputPath"
-}
 if ($malformed.Count -gt 0) {
     Write-Output "Malformed Details:"
     foreach ($entry in $malformed) {
