@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XML Generator</title>
+  <title>XML and EDI Generator</title>
   <style>
     :root {
       --bg: #f4efe6;
@@ -273,8 +273,8 @@
 <body>
   <main class="wrap">
     <section class="hero">
-      <h1>XML Generator</h1>
-      <p class="lead">Upload a TXT or XLSX file that contains XML paths, generate a sample XML document in the browser, preview the output, and download it immediately.</p>
+      <h1>XML and EDI Generator</h1>
+      <p class="lead">Upload TXT, XLSX, or EDI/X12 mapping input, generate XML in the browser, and generate X12 EDI when X12 paths are detected.</p>
 
       <div class="grid">
         <article class="card">
@@ -289,7 +289,7 @@
 
         <article class="card">
           <h2>Output</h2>
-          <p>The generator detects the root from the first valid path, applies common normalization fixes, and creates a downloadable sample XML file.</p>
+          <p>The generator always produces XML. For X12 mappings, it also produces EDI so both outputs can be downloaded.</p>
         </article>
 
         <article class="card">
@@ -299,8 +299,8 @@
       </div>
 
       <section class="tool">
-        <h2>Generate XML</h2>
-        <p>Select an input file, optionally set the XLSX column name, then click Generate XML.</p>
+        <h2>Generate Output</h2>
+        <p>Select an input file, optionally set the XLSX column name, then click Generate Output.</p>
 
         <div class="tool-grid">
           <div class="field">
@@ -330,7 +330,7 @@
         </div>
 
         <div class="tool-actions">
-          <button id="generateButton" type="button">Generate XML</button>
+          <button id="generateButton" type="button">Generate Output</button>
           <button id="downloadButton" class="secondary" type="button" disabled>Download XML</button>
           <button id="downloadEdiButton" class="secondary" type="button" disabled>Download EDI</button>
           <button id="copyButton" class="secondary" type="button" disabled>Copy XML</button>
@@ -341,7 +341,7 @@
         <div class="output-grid">
           <section class="output">
             <h3>Generated Output</h3>
-            <pre id="xmlPreview">Generate XML to preview the output here.</pre>
+            <pre id="xmlPreview">Generate output to preview XML here.</pre>
           </section>
           <section class="output">
             <h3>Warnings</h3>
@@ -352,7 +352,7 @@
         </div>
       </section>
 
-      <p class="footer">The browser UI generates XML locally on the user device.</p>
+      <p class="footer">The browser UI generates output locally on the user device.</p>
     </section>
   </main>
 
@@ -1263,22 +1263,18 @@
         const result = createXmlFromLines(lines);
         generatedXml = result.xml;
         const rootLocalName = getLocalName(result.rootName);
-        const isEdiOutput = rootLocalName === "X12";
-        if (isEdiOutput) {
+        const hasX12Root = rootLocalName === "X12";
+        if (hasX12Root) {
           generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet);
-          xmlPreview.textContent = generatedEdi || "EDI generation failed.";
-          downloadButton.disabled = true;
-          downloadEdiButton.disabled = !generatedEdi;
-          copyButton.disabled = true;
-        } else {
-          xmlPreview.textContent = generatedXml;
-          downloadButton.disabled = false;
-          downloadEdiButton.disabled = true;
-          copyButton.disabled = false;
         }
 
-        let message = isEdiOutput
-          ? `Generated EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
+        xmlPreview.textContent = generatedXml;
+        downloadButton.disabled = false;
+        downloadEdiButton.disabled = !generatedEdi;
+        copyButton.disabled = false;
+
+        let message = hasX12Root && generatedEdi
+          ? `Generated XML and EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
           : `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
         if (result.malformed.length) {
           message += ` Warnings (${result.malformed.length}): ${summarizeWarnings(result.malformed, 3)}`;
