@@ -956,7 +956,7 @@
         segmentMap.set("B10", new Map([[1, ""], [2, ""], [3, ""]]));
       }
 
-      const transactionSet = /^\d{3}$/.test(String(effectiveTransactionSetHint ?? "")) ? String(effectiveTransactionSetHint) : "214";
+      const transactionSet = "861";
       const output = [];
 
       function emitSegment(segmentId, forceElementCount = 0) {
@@ -972,6 +972,11 @@
         const maxPos = positions.length ? Math.max(...positions) : 1;
         const values = [];
         for (let pos = 1; pos <= maxPos; pos += 1) {
+          if (segmentId === "ST" && pos === 1) {
+            values.push(transactionSet);
+            continue;
+          }
+
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
           values.push(explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet));
         }
@@ -1381,6 +1386,9 @@
         let message = (selectedOutputMode === "edi")
           ? `Generated EDI successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`
           : `Generated XML successfully. Root: ${result.rootName}. Lines used: ${result.used}. Lines skipped: ${result.skipped}.`;
+        if (selectedOutputMode === "edi" && detectedTransactionSet && detectedTransactionSet !== "861") {
+          message += ` Note: EDI generation is currently limited to transaction set 861. Detected hint '${detectedTransactionSet}' was ignored.`;
+        }
         if (result.malformed.length) {
           message += ` Warnings (${result.malformed.length}): ${summarizeWarnings(result.malformed, 3)}`;
         }

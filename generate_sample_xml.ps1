@@ -809,9 +809,9 @@ function Build-SampleEdiFromPathLines {
         }
     }
 
-    $transactionSet = '214'
-    if (-not [string]::IsNullOrWhiteSpace($effectiveTransactionSetHint) -and $effectiveTransactionSetHint -match '^\d{3}$') {
-        $transactionSet = $effectiveTransactionSetHint
+    $transactionSet = '861'
+    if (-not [string]::IsNullOrWhiteSpace($effectiveTransactionSetHint) -and $effectiveTransactionSetHint -match '^\d{3}$' -and $effectiveTransactionSetHint -ne '861') {
+        Write-Warning "EDI generator currently supports transaction set 861 only. Ignoring detected transaction set '$effectiveTransactionSetHint'."
     }
 
     $orderedTxnSegments = @('ST') + @($dataSegmentIds) + @('SE')
@@ -846,6 +846,11 @@ function Build-SampleEdiFromPathLines {
 
         $values = New-Object System.Collections.Generic.List[string]
         for ($pos = 1; $pos -le [int]$maxPos; $pos++) {
+            if ($segmentId -eq 'ST' -and $pos -eq 1) {
+                $values.Add($transactionSet)
+                continue
+            }
+
             $explicitValue = $null
             $posKey = [string]$pos
             if ($elementMap.Contains($posKey)) {
