@@ -50,6 +50,14 @@ function Resolve-EdiMappedValue {
         return $Matches[1]
     }
 
+    if ($text -match '(?i)hardcode\s+to\s*["'']([^"'']+)["'']') {
+        return $Matches[1].Trim()
+    }
+
+    if ($text -match '(?i)hardcode\s+to\s+([A-Za-z0-9_\-]+)') {
+        return $Matches[1].Trim()
+    }
+
     if ($text -match '(?i)hardcode\s*\?([^\?]+)\?') {
         return $Matches[1].Trim()
     }
