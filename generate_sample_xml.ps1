@@ -2,6 +2,7 @@ $inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample f
 $outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
 $ediOutputPath = [System.IO.Path]::ChangeExtension($outputPath, ".edi")
 $xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
+$xlsxValueColumn = "Value"
 $xlsxWorksheetName = $null
 $outputDir = Split-Path -Parent $outputPath
 
@@ -15,6 +16,20 @@ if (-not (Test-Path $outputDir)) {
 }
 
 $lines = @()
+
+function Normalize-PathForLookup {
+    param([string]$line)
+
+    $clean = ([string]$line).Trim()
+    while ($clean -match '(^|/)px:px:') {
+        $clean = $clean -replace '(^|/)px:px:', '$1px:'
+    }
+    $clean = $clean -replace 'px:/Shipment', 'px:Shipment'
+    $clean = $clean -replace 'px:/', 'px:'
+    $clean = [regex]::Replace($clean, '(?<=[A-Za-z0-9_\]])(px:)(?=[A-Za-z_])', '/$1')
+    $clean = [regex]::Replace($clean, '(\[[^\]]+\])(?=[A-Za-z_])', '$1/')
+    return $clean
+}
 
 function Convert-EdiToPathLines {
     param([string]$ediText)
@@ -101,8 +116,11 @@ function Get-InputLines {
     param(
         [string]$sourcePath,
         [string]$pathColumn,
+        [string]$valueColumn,
         [string]$worksheetName
     )
+
+    $pathValues = @{}
 
     $ext = [System.IO.Path]::GetExtension($sourcePath).ToLowerInvariant()
 
@@ -113,11 +131,11 @@ function Get-InputLines {
             $converted = Convert-EdiToPathLines -ediText $text
             if ($converted -and $converted.Count -gt 0) {
                 Write-Warning "Detected EDI content in TXT input. Converting segments to XML-like paths."
-                return @($converted)
+                return @{ Lines = @($converted); PathValues = $pathValues }
             }
         }
 
-        return @($rawLines)
+        return @{ Lines = @($rawLines); PathValues = $pathValues }
     }
 
     if ($ext -eq ".edi" -or $ext -eq ".x12") {
@@ -128,7 +146,7 @@ function Get-InputLines {
             exit 1
         }
 
-        return @($converted)
+        return @{ Lines = @($converted); PathValues = $pathValues }
     }
 
     if ($ext -eq ".xlsx") {
@@ -315,11 +333,16 @@ function Get-InputLines {
         }
 
         $targetNormalized = & $normalize $pathColumn
+        $targetValueNormalized = & $normalize $valueColumn
         $resolvedColumn = $null
+        $resolvedValueColumn = $null
         foreach ($prop in $firstRowProps) {
             if ((& $normalize $prop) -eq $targetNormalized) {
                 $resolvedColumn = $prop
-                break
+            }
+
+            if ((& $normalize $prop) -eq $targetValueNormalized) {
+                $resolvedValueColumn = $prop
             }
         }
 
@@ -327,7 +350,8 @@ function Get-InputLines {
             $embeddedHeaderMatch = Find-EmbeddedHeaderValues -xlsxPath $sourcePath -sheetName $worksheetName -normalizeFn $normalize -normalizedHeader $targetNormalized
             if ($embeddedHeaderMatch) {
                 Write-Warning "Detected embedded header '$pathColumn' on worksheet '$($embeddedHeaderMatch.Sheet)' row $($embeddedHeaderMatch.RowNumber), column '$($embeddedHeaderMatch.Column)'."
-                return @($embeddedHeaderMatch.Values | Where-Object { $_ -match '^\s*/?[A-Za-z_][\w:\-]*(/|\[)' })
+                $embeddedLines = @($embeddedHeaderMatch.Values | Where-Object { $_ -match '^\s*/?[A-Za-z_][\w:\-]*(/|\[)' })
+                return @{ Lines = $embeddedLines; PathValues = $pathValues }
             }
         }
 
@@ -369,11 +393,39 @@ function Get-InputLines {
             exit 1
         }
 
+        if (-not $resolvedValueColumn) {
+            $candidateNames = @('value', 'mapped value', 'output value', 'target value', 'populate value', 'edi value')
+            foreach ($prop in $firstRowProps) {
+                $normalizedProp = & $normalize $prop
+                if ($candidateNames -contains $normalizedProp) {
+                    $resolvedValueColumn = $prop
+                    break
+                }
+            }
+        }
+
+        if (-not $resolvedValueColumn) {
+            Write-Warning "Value column '$valueColumn' not found. EDI output will use sample placeholder values for missing mappings."
+        }
+
         $result = New-Object System.Collections.Generic.List[string]
         foreach ($row in $rows) {
-            $value = [string]$row.$resolvedColumn
-            if (-not [string]::IsNullOrWhiteSpace($value)) {
-                $result.Add($value)
+            $pathValue = [string]$row.$resolvedColumn
+            if ([string]::IsNullOrWhiteSpace($pathValue)) {
+                continue
+            }
+
+            $trimmedPath = $pathValue.Trim()
+            $result.Add($trimmedPath)
+
+            if ($resolvedValueColumn) {
+                $mappedValue = [string]$row.$resolvedValueColumn
+                if (-not [string]::IsNullOrWhiteSpace($mappedValue)) {
+                    $lookupKey = Normalize-PathForLookup -line $trimmedPath
+                    if (-not $pathValues.ContainsKey($lookupKey)) {
+                        $pathValues[$lookupKey] = $mappedValue.Trim()
+                    }
+                }
             }
         }
 
@@ -381,18 +433,23 @@ function Get-InputLines {
             $converted = Convert-EdiToPathLines -ediText (($result -join [Environment]::NewLine))
             if ($converted -and $converted.Count -gt 0) {
                 Write-Warning "Detected EDI content in XLSX column '$resolvedColumn'. Converting segments to XML-like paths."
-                return @($converted)
+                return @{ Lines = @($converted); PathValues = $pathValues }
             }
         }
 
-        return @($result)
+        return @{ Lines = @($result); PathValues = $pathValues }
     }
 
     Write-Error "Unsupported input file type '$ext'. Supported: .txt, .xlsx, .edi, .x12"
     exit 1
 }
 
-$lines = Get-InputLines -sourcePath $inputPath -pathColumn $xlsxPathColumn -worksheetName $xlsxWorksheetName
+$inputResult = Get-InputLines -sourcePath $inputPath -pathColumn $xlsxPathColumn -valueColumn $xlsxValueColumn -worksheetName $xlsxWorksheetName
+$lines = @($inputResult.Lines)
+$pathValueMap = @{}
+if ($inputResult.PathValues) {
+    $pathValueMap = $inputResult.PathValues
+}
 $used = 0
 $skipped = 0
 $malformed = New-Object System.Collections.Generic.List[string]
@@ -641,7 +698,8 @@ function Get-TransactionSetHintFromInputPath {
 function Build-SampleEdiFromPathLines {
     param(
         [string[]]$pathLines,
-        [string]$transactionSetHint
+        [string]$transactionSetHint,
+        [hashtable]$pathValueMap
     )
 
     $segments = [ordered]@{}
@@ -652,6 +710,11 @@ function Build-SampleEdiFromPathLines {
         }
 
         $clean = Normalize-PathLine -line $line
+        $lineValue = $null
+        $lookupKey = Normalize-PathForLookup -line $clean
+        if ($pathValueMap -and $pathValueMap.ContainsKey($lookupKey)) {
+            $lineValue = [string]$pathValueMap[$lookupKey]
+        }
         $split = Split-XmlPathSegments -path $clean
         if (-not $split.Valid -or $split.Segments.Count -lt 3) {
             continue
@@ -700,7 +763,9 @@ function Build-SampleEdiFromPathLines {
 
         $positionKey = [string]$position
         if (-not $segments[$segmentId].Contains($positionKey)) {
-            $segments[$segmentId][$positionKey] = $null
+            $segments[$segmentId][$positionKey] = $lineValue
+        } elseif ([string]::IsNullOrWhiteSpace([string]$segments[$segmentId][$positionKey]) -and -not [string]::IsNullOrWhiteSpace($lineValue)) {
+            $segments[$segmentId][$positionKey] = $lineValue
         }
     }
 
@@ -720,7 +785,7 @@ function Build-SampleEdiFromPathLines {
     if ($dataSegmentIds.Count -eq 0) {
         $dataSegmentIds.Add('B10')
         if (-not $segments.Contains('B10')) {
-            $segments['B10'] = [ordered]@{ 1 = $null; 2 = $null; 3 = $null }
+            $segments['B10'] = [ordered]@{ '1' = $null; '2' = $null; '3' = $null }
         }
     }
 
@@ -761,7 +826,17 @@ function Build-SampleEdiFromPathLines {
 
         $values = New-Object System.Collections.Generic.List[string]
         for ($pos = 1; $pos -le [int]$maxPos; $pos++) {
-            $values.Add((Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet))
+            $explicitValue = $null
+            $posKey = [string]$pos
+            if ($elementMap.Contains($posKey)) {
+                $explicitValue = [string]$elementMap[$posKey]
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
+                $values.Add($explicitValue)
+            } else {
+                $values.Add((Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet))
+            }
         }
 
         $segmentText = $segmentId
@@ -1191,7 +1266,7 @@ $isX12Root = ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12')
 
 if ($isX12Root) {
     $transactionSetHint = Get-TransactionSetHintFromInputPath -path $inputPath
-    $ediText = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint
+    $ediText = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint -pathValueMap $pathValueMap
     if (-not [string]::IsNullOrWhiteSpace($ediText)) {
         $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
         $outputFormat = 'EDI'

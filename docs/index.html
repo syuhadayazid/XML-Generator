@@ -314,6 +314,11 @@
           </div>
 
           <div class="field">
+            <label for="valueColumnName">XLSX value column (optional for EDI)</label>
+            <input id="valueColumnName" type="text" placeholder="Example: Value">
+          </div>
+
+          <div class="field">
             <label for="worksheetName">Worksheet name (optional)</label>
             <input id="worksheetName" type="text" placeholder="Leave empty for first sheet">
           </div>
@@ -361,6 +366,7 @@
   <script>
     const inputFile = document.getElementById("inputFile");
     const columnName = document.getElementById("columnName");
+    const valueColumnName = document.getElementById("valueColumnName");
     const worksheetName = document.getElementById("worksheetName");
     const downloadName = document.getElementById("downloadName");
     const generateButton = document.getElementById("generateButton");
@@ -377,6 +383,7 @@
     let generatedXml = "";
     let generatedEdi = "";
     let detectedTransactionSet = "";
+    let ediPathValueMap = new Map();
     let selectedFile = null;
     let toastTimer = null;
 
@@ -690,6 +697,18 @@
       return clean;
     }
 
+    function addPathValueMapping(path, value) {
+      const normalizedPath = normalizePathLine(String(path ?? ""));
+      const mappedValue = String(value ?? "").trim();
+      if (!normalizedPath || !mappedValue) {
+        return;
+      }
+
+      if (!ediPathValueMap.has(normalizedPath)) {
+        ediPathValueMap.set(normalizedPath, mappedValue);
+      }
+    }
+
     function convertEdiToPathLines(ediText) {
       const lines = [];
       const parts = String(ediText ?? "").split(/~|\r?\n/);
@@ -827,7 +846,7 @@
       return match ? match[1] : "";
     }
 
-    function buildSampleEdiFromPathLines(lines, transactionSetHint) {
+    function buildSampleEdiFromPathLines(lines, transactionSetHint, pathValueMap) {
       const segmentMap = new Map();
 
       lines.forEach((line) => {
@@ -868,15 +887,23 @@
             return;
           }
 
-          parsed = { segmentId, position };
+          const normalizedPath = normalizePathLine(String(line));
+          const mappedValue = pathValueMap && pathValueMap.has(normalizedPath)
+            ? String(pathValueMap.get(normalizedPath) ?? "")
+            : "";
+
+          parsed = { segmentId, position, mappedValue };
         } catch {
           return;
         }
 
         if (!segmentMap.has(parsed.segmentId)) {
-          segmentMap.set(parsed.segmentId, new Set());
+          segmentMap.set(parsed.segmentId, new Map());
         }
-        segmentMap.get(parsed.segmentId).add(parsed.position);
+        const positionMap = segmentMap.get(parsed.segmentId);
+        if (!positionMap.has(parsed.position) || !String(positionMap.get(parsed.position) ?? "").trim()) {
+          positionMap.set(parsed.position, parsed.mappedValue);
+        }
       });
 
       if (!segmentMap.size) {
@@ -887,16 +914,18 @@
       const dataSegments = Array.from(segmentMap.keys()).filter((id) => !control.has(id));
       if (!dataSegments.length) {
         dataSegments.push("B10");
-        segmentMap.set("B10", new Set([1, 2, 3]));
+        segmentMap.set("B10", new Map([[1, ""], [2, ""], [3, ""]]));
       }
 
       const transactionSet = /^\d{3}$/.test(String(transactionSetHint ?? "")) ? String(transactionSetHint) : "214";
       const output = [];
 
       function emitSegment(segmentId, forceElementCount = 0) {
-        const positions = segmentMap.has(segmentId) ? Array.from(segmentMap.get(segmentId)) : [];
+        const positionMap = segmentMap.has(segmentId) ? new Map(segmentMap.get(segmentId)) : new Map();
+        const positions = Array.from(positionMap.keys());
         for (let i = 1; i <= forceElementCount; i += 1) {
-          if (!positions.includes(i)) {
+          if (!positionMap.has(i)) {
+            positionMap.set(i, "");
             positions.push(i);
           }
         }
@@ -904,7 +933,8 @@
         const maxPos = positions.length ? Math.max(...positions) : 1;
         const values = [];
         for (let pos = 1; pos <= maxPos; pos += 1) {
-          values.push(getSampleEdiElementValue(segmentId, pos, transactionSet));
+          const explicitValue = String(positionMap.get(pos) ?? "").trim();
+          values.push(explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet));
         }
         output.push(`${segmentId}*${values.join("*")}~`);
       }
@@ -1182,6 +1212,7 @@
         }
 
         const wanted = normalizeHeader(columnName.value);
+        const wantedValue = normalizeHeader(valueColumnName.value);
         const columnNameProvided = Boolean(wanted);
 
         if (columnNameProvided) {
@@ -1214,7 +1245,25 @@
             const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
             if (resolvedHeader) {
               setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
-              return maybeConvertDetectedEdi(rows.map((row) => String(row[resolvedHeader] ?? "")), `worksheet '${currentSheetName}' column '${resolvedHeader}'`);
+              const resolvedValueHeader = wantedValue
+                ? headers.find((header) => normalizeHeader(header) === wantedValue)
+                : null;
+
+              const pathLines = rows
+                .map((row) => String(row[resolvedHeader] ?? "").trim())
+                .filter((value) => value.length > 0);
+
+              if (resolvedValueHeader) {
+                rows.forEach((row) => {
+                  const path = String(row[resolvedHeader] ?? "").trim();
+                  const mappedValue = String(row[resolvedValueHeader] ?? "");
+                  addPathValueMapping(path, mappedValue);
+                });
+              } else if (wantedValue) {
+                setStatus(`Path column found but value column '${valueColumnName.value}' was not found. Falling back to sample values for missing EDI elements.`);
+              }
+
+              return maybeConvertDetectedEdi(pathLines, `worksheet '${currentSheetName}' column '${resolvedHeader}'`);
             }
           }
 
@@ -1254,6 +1303,7 @@
       generatedXml = "";
       generatedEdi = "";
       detectedTransactionSet = getTransactionSetHintFromFileName(file.name);
+      ediPathValueMap = new Map();
       xmlPreview.textContent = "Working...";
       renderWarnings([]);
       setStatus(`Reading ${file.name}...`);
@@ -1265,7 +1315,7 @@
         const rootLocalName = getLocalName(result.rootName);
         const hasX12Root = rootLocalName === "X12";
         if (hasX12Root) {
-          generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet);
+          generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet, ediPathValueMap);
           xmlPreview.textContent = generatedEdi || "EDI generation failed.";
           downloadButton.disabled = true;
           downloadEdiButton.disabled = !generatedEdi;
