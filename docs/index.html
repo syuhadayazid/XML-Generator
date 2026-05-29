@@ -952,7 +952,7 @@
           if (position === 2) { return "000000001"; }
           return "SAMPLE_VALUE";
         case "DTM":
-          if (position === 1) { return "050"; }
+          if (position === 1) { return ""; }
           if (position === 2) {
             const now = new Date();
             const yyyy = now.getFullYear();
@@ -1186,19 +1186,10 @@
       emitSegment("ST", controlElementMaps.get("ST"), 2);
 
       let txnDataSegmentCount = 0;
-      let dtmOccurrenceIndex = 0;
       occurrenceOrder.forEach((occurrenceKey) => {
         const occurrence = segmentOccurrences.get(occurrenceKey);
         if (!occurrence || !occurrence.segmentId || controlSegments.has(occurrence.segmentId)) {
           return;
-        }
-
-        if (occurrence.segmentId === "DTM") {
-          dtmOccurrenceIndex += 1;
-          const dtm01 = String(occurrence.elements.get(1) ?? "").trim();
-          if (!dtm01) {
-            occurrence.elements.set(1, dtmOccurrenceIndex === 1 ? "050" : "922");
-          }
         }
 
         emitSegment(occurrence.segmentId, occurrence.elements, 0);

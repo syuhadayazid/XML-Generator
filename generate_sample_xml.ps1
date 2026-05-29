@@ -762,7 +762,7 @@ function Get-SampleEdiElementValue {
             return 'SAMPLE_VALUE'
         }
         'DTM' {
-            if ($position -eq 1) { return '050' }
+            if ($position -eq 1) { return '' }
             if ($position -eq 2) { return (Get-Date -Format 'yyyyMMdd') }
             if ($position -eq 3) { return (Get-Date -Format 'HHmm') }
             return 'SAMPLE_VALUE'
@@ -1060,7 +1060,6 @@ function Build-SampleEdiFromPathLines {
     & $emitSegment 'ST' $stMap 2
 
     $txnDataSegmentCount = 0
-    $dtmOccurrenceIndex = 0
     foreach ($occurrenceKey in $occurrenceOrder) {
         $occurrence = $segmentOccurrences[$occurrenceKey]
         if (-not $occurrence) { continue }
@@ -1068,18 +1067,6 @@ function Build-SampleEdiFromPathLines {
         $occurrenceSegmentId = [string]$occurrence.SegmentId
         if ([string]::IsNullOrWhiteSpace($occurrenceSegmentId)) { continue }
         if ($controlSegments -contains $occurrenceSegmentId) { continue }
-
-        if ($occurrenceSegmentId -eq 'DTM') {
-            $dtmOccurrenceIndex++
-            $dtm01 = $null
-            if ($occurrence.Elements.Contains('1')) {
-                $dtm01 = [string]$occurrence.Elements['1']
-            }
-
-            if ([string]::IsNullOrWhiteSpace($dtm01)) {
-                $occurrence.Elements['1'] = if ($dtmOccurrenceIndex -eq 1) { '050' } else { '922' }
-            }
-        }
 
         & $emitSegment $occurrenceSegmentId $occurrence.Elements 0
         $txnDataSegmentCount++
