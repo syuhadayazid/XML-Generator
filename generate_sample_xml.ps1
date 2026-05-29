@@ -31,6 +31,65 @@ function Normalize-PathForLookup {
     return $clean
 }
 
+function Resolve-EdiMappedValue {
+    param([string]$rawValue)
+
+    $text = [string]$rawValue
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $null
+    }
+
+    $text = $text -replace "`r", ""
+    $text = $text -split "`n" | Select-Object -First 1
+    $text = $text.Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $null
+    }
+
+    if ($text -match '(?i)hardcode\s*=?\s*["'']([^"'']+)["'']') {
+        return $Matches[1]
+    }
+
+    if ($text -match '(?i)hardcode\s*\?([^\?]+)\?') {
+        return $Matches[1].Trim()
+    }
+
+    if ($text -match '^([A-Za-z0-9_\-]+)\s*=\s*.+$') {
+        return $Matches[1]
+    }
+
+    if ($text -match '^([A-Za-z0-9_\-]+)\s*\([^\)]*\)$') {
+        return $Matches[1]
+    }
+
+    if ($text -match '(?i)^ten\s+empty\s+spaces$') {
+        return '          '
+    }
+
+    if ($text -match '(?i)^current\s+date') {
+        return (Get-Date -Format 'yyyyMMdd')
+    }
+
+    if ($text -match '(?i)^current\s+time') {
+        return (Get-Date -Format 'HHmm')
+    }
+
+    if ($text -match '(?i)sequential\s+number') {
+        return '0001'
+    }
+
+    if ($text -match '^(<[^>]+>|\[[^\]]+\])$') {
+        return 'SAMPLE_VALUE'
+    }
+
+    # If the cell looks like a guidance sentence, prefer fallback sample defaults.
+    if ($text -match '(?i)(format|hardcode|current\s+date|current\s+time|expressed\s+as|for\s+example)') {
+        return $null
+    }
+
+    return $text
+}
+
 function Convert-EdiToPathLines {
     param([string]$ediText)
 
@@ -423,11 +482,11 @@ function Get-InputLines {
             $result.Add($trimmedPath)
 
             if ($resolvedValueColumn) {
-                $mappedValue = [string]$row.$resolvedValueColumn
+                $mappedValue = Resolve-EdiMappedValue -rawValue ([string]$row.$resolvedValueColumn)
                 if (-not [string]::IsNullOrWhiteSpace($mappedValue)) {
                     $lookupKey = Normalize-PathForLookup -line $trimmedPath
                     if (-not $pathValues.ContainsKey($lookupKey)) {
-                        $pathValues[$lookupKey] = $mappedValue.Trim()
+                        $pathValues[$lookupKey] = ([string]$mappedValue).Trim()
                     }
                 }
             }

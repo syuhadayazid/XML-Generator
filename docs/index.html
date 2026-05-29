@@ -721,7 +721,7 @@
 
     function addPathValueMapping(path, value) {
       const normalizedPath = normalizePathLine(String(path ?? ""));
-      const mappedValue = String(value ?? "").trim();
+      const mappedValue = resolveEdiMappedValue(value);
       if (!normalizedPath || !mappedValue) {
         return;
       }
@@ -729,6 +729,64 @@
       if (!ediPathValueMap.has(normalizedPath)) {
         ediPathValueMap.set(normalizedPath, mappedValue);
       }
+    }
+
+    function resolveEdiMappedValue(rawValue) {
+      let text = String(rawValue ?? "");
+      if (!text.trim()) {
+        return "";
+      }
+
+      text = text.replace(/\r/g, "").split("\n")[0].trim();
+      if (!text) {
+        return "";
+      }
+
+      let match = text.match(/hardcode\s*=?\s*["']([^"']+)["']/i);
+      if (match) {
+        return match[1].trim();
+      }
+
+      match = text.match(/hardcode\s*\?([^?]+)\?/i);
+      if (match) {
+        return match[1].trim();
+      }
+
+      match = text.match(/^([A-Za-z0-9_-]+)\s*=\s*.+$/);
+      if (match) {
+        return match[1].trim();
+      }
+
+      match = text.match(/^([A-Za-z0-9_-]+)\s*\([^)]*\)$/);
+      if (match) {
+        return match[1].trim();
+      }
+
+      if (/^ten\s+empty\s+spaces$/i.test(text)) {
+        return "          ";
+      }
+
+      if (/^current\s+date/i.test(text)) {
+        return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      }
+
+      if (/^current\s+time/i.test(text)) {
+        return new Date().toISOString().slice(11, 16).replace(":", "");
+      }
+
+      if (/sequential\s+number/i.test(text)) {
+        return "0001";
+      }
+
+      if (/^(<[^>]+>|\[[^\]]+\])$/.test(text)) {
+        return "SAMPLE_VALUE";
+      }
+
+      if (/(format|hardcode|current\s+date|current\s+time|expressed\s+as|for\s+example)/i.test(text)) {
+        return "";
+      }
+
+      return text;
     }
 
     function convertEdiToPathLines(ediText) {
