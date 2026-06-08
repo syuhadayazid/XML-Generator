@@ -1287,7 +1287,7 @@ function Build-SampleEdiFromPathLines {
         $baseOccurrenceKey = ($occurrenceParts -join '/')
         $occurrenceKey = if ($latestOccurrenceByBase.ContainsKey($baseOccurrenceKey)) { $latestOccurrenceByBase[$baseOccurrenceKey] } else { $baseOccurrenceKey }
 
-        if ($segmentId -eq 'REF' -and $position -eq 1) {
+        if (($segmentId -eq 'REF' -or $segmentId -eq 'N1') -and $position -eq 1) {
             $existingOccurrence = if ($segmentOccurrences.ContainsKey($occurrenceKey)) { $segmentOccurrences[$occurrenceKey] } else { $null }
             if ($existingOccurrence -and $existingOccurrence.Elements.Count -gt 0) {
                 $nextCount = if ($occurrenceCounters.ContainsKey($baseOccurrenceKey)) { [int]$occurrenceCounters[$baseOccurrenceKey] + 1 } else { 1 }
@@ -1304,7 +1304,7 @@ function Build-SampleEdiFromPathLines {
             $occurrenceOrder.Add($occurrenceKey)
         }
 
-        if ($segmentId -eq 'REF') {
+        if ($segmentId -eq 'REF' -or $segmentId -eq 'N1') {
             $latestOccurrenceByBase[$baseOccurrenceKey] = $occurrenceKey
         }
 

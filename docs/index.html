@@ -1162,7 +1162,7 @@
         const baseOccurrenceKey = parsed.occurrenceKey;
         let occurrenceKey = latestOccurrenceByBase.get(baseOccurrenceKey) || baseOccurrenceKey;
 
-        if (parsed.segmentId === "REF" && parsed.position === 1) {
+        if ((parsed.segmentId === "REF" || parsed.segmentId === "N1") && parsed.position === 1) {
           const existingOccurrence = segmentOccurrences.get(occurrenceKey);
           if (existingOccurrence && existingOccurrence.elements.size > 0) {
             const nextCount = (occurrenceCounters.get(baseOccurrenceKey) || 0) + 1;
@@ -1179,7 +1179,7 @@
           occurrenceOrder.push(occurrenceKey);
         }
 
-        if (parsed.segmentId === "REF") {
+        if (parsed.segmentId === "REF" || parsed.segmentId === "N1") {
           latestOccurrenceByBase.set(baseOccurrenceKey, occurrenceKey);
         }
 
