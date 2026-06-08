@@ -1048,6 +1048,51 @@
       return match ? match[1] : "";
     }
 
+    function validateEdiElementLengths(ediText) {
+      const errors = [];
+      const elementLengthRules = new Map([
+        ["BRA04", { min: 1, max: 1 }],
+        ["RCD02", { min: 1, max: 9 }]
+      ]);
+
+      String(ediText || "").split(/~|\r?\n/).forEach((rawSegment) => {
+        const segment = String(rawSegment || "").trim();
+        if (!segment) {
+          return;
+        }
+
+        const parts = segment.split("*");
+        const segmentId = String(parts[0] || "").trim().toUpperCase();
+        if (!segmentId || parts.length <= 1) {
+          return;
+        }
+
+        for (let i = 1; i < parts.length; i += 1) {
+          const elementName = `${segmentId}${String(i).padStart(2, "0")}`;
+          if (!elementLengthRules.has(elementName)) {
+            continue;
+          }
+
+          const rule = elementLengthRules.get(elementName);
+          const value = String(parts[i] || "");
+          if (!value.length) {
+            continue;
+          }
+
+          if (rule.max > 0 && value.length > rule.max) {
+            errors.push(`${elementName}: element too long, actual: ${value.length}, standard: ${rule.max}`);
+            continue;
+          }
+
+          if (rule.min > 0 && value.length < rule.min) {
+            errors.push(`${elementName}: element too short, actual: ${value.length}, standard: ${rule.min}`);
+          }
+        }
+      });
+
+      return errors;
+    }
+
     function buildSampleEdiFromPathLines(lines, transactionSetHint, pathValueMap) {
       const controlSegments = new Set(["ISA", "GS", "ST", "SE", "GE", "IEA"]);
       const controlElementMaps = new Map();
@@ -1215,6 +1260,7 @@
       const transactionSet = "861";
       const output = [];
       let isaControlNumber = "";
+      let stControlNumber = "";
 
       const isaMap = controlElementMaps.get("ISA");
       const gsSenderFallback = formatEdiElementValue(
@@ -1252,8 +1298,8 @@
             continue;
           }
 
-          if (segmentId === "GE" && pos === 2 && isaControlNumber) {
-            values.push(isaControlNumber);
+          if (segmentId === "GE" && pos === 2 && stControlNumber) {
+            values.push(stControlNumber);
             continue;
           }
 
@@ -1287,6 +1333,9 @@
             const formattedValue = formatEdiElementValue(segmentId, pos, rawValue);
             if (segmentId === "ISA" && pos === 13) {
               isaControlNumber = formattedValue;
+            }
+            if (segmentId === "ST" && pos === 2) {
+              stControlNumber = formattedValue;
             }
             values.push(formattedValue);
             continue;
@@ -1322,6 +1371,9 @@
           if (segmentId === "ISA" && pos === 13) {
             isaControlNumber = formattedValue;
           }
+          if (segmentId === "ST" && pos === 2) {
+            stControlNumber = formattedValue;
+          }
           values.push(formattedValue);
         }
         if (segmentId === "RCD") {
@@ -1350,8 +1402,9 @@
 
       const transactionSegmentCount = 2 + txnDataSegmentCount;
       const interchangeControlNumber = isaControlNumber || "000000001";
+      const functionalGroupControlNumber = stControlNumber || "0001";
       output.push(`SE*${transactionSegmentCount}*0001~`);
-      output.push(`GE*1*${interchangeControlNumber}~`);
+      output.push(`GE*1*${functionalGroupControlNumber}~`);
       output.push(`IEA*1*${interchangeControlNumber}~`);
 
       return {
@@ -1732,6 +1785,11 @@
           generatedEdi = (ediBuild && typeof ediBuild === "object") ? (ediBuild.ediText || "") : String(ediBuild || "");
           if (ediBuild && Array.isArray(ediBuild.warnings) && ediBuild.warnings.length) {
             result.malformed.push(...ediBuild.warnings);
+          }
+
+          const lengthErrors = validateEdiElementLengths(generatedEdi);
+          if (lengthErrors.length) {
+            result.malformed.push(...lengthErrors.map((message) => `ERROR: ${message}`));
           }
         }
 

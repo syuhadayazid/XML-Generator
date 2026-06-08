@@ -958,11 +958,14 @@ function Parse-SefSegmentDefinitions {
         $body = $text.Substring($equalsIndex + 1)
         $matches = [regex]::Matches($body, '\[([^\]]+)\]')
         $requiredPositions = New-Object System.Collections.Generic.List[int]
+        $elementIds = New-Object System.Collections.Generic.List[string]
         $position = 0
 
         foreach ($match in $matches) {
             $position++
             $fields = @($match.Groups[1].Value.Split(','))
+            $elementId = if ($fields.Count -ge 1) { ([string]$fields[0]).Trim() } else { '' }
+            $elementIds.Add($elementId)
             $usage = if ($fields.Count -ge 2) { ([string]$fields[1]).Trim().ToUpperInvariant() } else { '' }
             if ($usage -eq 'M') {
                 $requiredPositions.Add($position)
@@ -973,6 +976,33 @@ function Parse-SefSegmentDefinitions {
             SegmentId = $segmentId
             ElementCount = $position
             RequiredPositions = @($requiredPositions)
+            ElementIds = @($elementIds)
+        }
+    }
+
+    return $definitions
+}
+
+function Parse-SefElementDefinitions {
+    param([string[]]$lines)
+
+    $definitions = @{}
+    foreach ($line in $lines) {
+        $text = ([string]$line).Trim()
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            continue
+        }
+
+        if ($text -match '^(\d+)=([A-Z]{1,3}),(\d+),(\d+)\s*$') {
+            $elementId = [string]$Matches[1]
+            if (-not $definitions.ContainsKey($elementId)) {
+                $definitions[$elementId] = [pscustomobject]@{
+                    ElementId = $elementId
+                    DataType = [string]$Matches[2]
+                    MinLength = [int]$Matches[3]
+                    MaxLength = [int]$Matches[4]
+                }
+            }
         }
     }
 
@@ -989,26 +1019,38 @@ function Get-SefSchemaModel {
     $lines = Get-Content -LiteralPath $schemaPath
     $setExpression = $null
     $segmentLines = New-Object System.Collections.Generic.List[string]
+    $elementLines = New-Object System.Collections.Generic.List[string]
     $inSets = $false
     $inSegs = $false
+    $inElms = $false
 
     foreach ($rawLine in $lines) {
         $line = [string]$rawLine
         if ($line -match '^\.SETS') {
             $inSets = $true
             $inSegs = $false
+            $inElms = $false
             continue
         }
 
         if ($line -match '^\.SEGS') {
             $inSets = $false
             $inSegs = $true
+            $inElms = $false
+            continue
+        }
+
+        if ($line -match '^\.ELMS') {
+            $inSets = $false
+            $inSegs = $false
+            $inElms = $true
             continue
         }
 
         if ($line -match '^\.[A-Z]') {
             $inSets = $false
             $inSegs = $false
+            $inElms = $false
             continue
         }
 
@@ -1019,6 +1061,11 @@ function Get-SefSchemaModel {
 
         if ($inSegs) {
             $segmentLines.Add($line)
+            continue
+        }
+
+        if ($inElms) {
+            $elementLines.Add($line)
         }
     }
 
@@ -1030,6 +1077,7 @@ function Get-SefSchemaModel {
         SchemaPath = $schemaPath
         SetTokens = @(Parse-SefSetTokens -setExpression $setExpression)
         SegmentDefinitions = Parse-SefSegmentDefinitions -lines @($segmentLines)
+        ElementDefinitions = Parse-SefElementDefinitions -lines @($elementLines)
     }
 }
 
@@ -1091,6 +1139,7 @@ function Validate-EdiAgainstSef {
 
     $setTokens = @($schemaModel.SetTokens)
     $segmentDefinitions = $schemaModel.SegmentDefinitions
+    $elementDefinitions = if ($schemaModel.PSObject.Properties.Name -contains 'ElementDefinitions') { $schemaModel.ElementDefinitions } else { @{} }
     $tokenCounts = @{}
     $patternIndex = 0
     $topLevelSegmentIds = @{}
@@ -1112,6 +1161,37 @@ function Validate-EdiAgainstSef {
                 $value = if ($segment.Elements.Count -ge $requiredPosition) { [string]$segment.Elements[$requiredPosition - 1] } else { $null }
                 if ($null -eq $value -or $value.Length -eq 0) {
                     $errors.Add("Segment $($segment.SegmentId) at position $lineNo is missing required element $($segment.SegmentId)$('{0:D2}' -f $requiredPosition).")
+                }
+            }
+
+            for ($elementPos = 1; $elementPos -le $segment.Elements.Count; $elementPos++) {
+                if ($definition.ElementIds.Count -lt $elementPos) {
+                    continue
+                }
+
+                $elementId = [string]$definition.ElementIds[$elementPos - 1]
+                if ([string]::IsNullOrWhiteSpace($elementId) -or -not $elementDefinitions.ContainsKey($elementId)) {
+                    continue
+                }
+
+                $elementRule = $elementDefinitions[$elementId]
+                $value = [string]$segment.Elements[$elementPos - 1]
+                if ([string]::IsNullOrEmpty($value)) {
+                    continue
+                }
+
+                $actualLength = $value.Length
+                $minLength = [int]$elementRule.MinLength
+                $maxLength = [int]$elementRule.MaxLength
+                $elementName = "$($segment.SegmentId)$('{0:D2}' -f $elementPos)"
+
+                if ($maxLength -gt 0 -and $actualLength -gt $maxLength) {
+                    $errors.Add("${elementName}: element too long, actual: $actualLength, standard: $maxLength")
+                    continue
+                }
+
+                if ($minLength -gt 0 -and $actualLength -lt $minLength) {
+                    $errors.Add("${elementName}: element too short, actual: $actualLength, standard: $minLength")
                 }
             }
         } else {
@@ -1335,6 +1415,7 @@ function Build-SampleEdiFromPathLines {
 
     $segmentLines = New-Object System.Collections.Generic.List[string]
     $isaControlNumber = $null
+    $stControlNumber = $null
     $generationWarnings = New-Object System.Collections.Generic.List[string]
 
     $addGenerationWarning = {
@@ -1391,8 +1472,8 @@ function Build-SampleEdiFromPathLines {
                 continue
             }
 
-            if ($segmentId -eq 'GE' -and $pos -eq 2 -and -not [string]::IsNullOrWhiteSpace($isaControlNumber)) {
-                $values.Add($isaControlNumber)
+            if ($segmentId -eq 'GE' -and $pos -eq 2 -and -not [string]::IsNullOrWhiteSpace($stControlNumber)) {
+                $values.Add($stControlNumber)
                 continue
             }
 
@@ -1429,6 +1510,9 @@ function Build-SampleEdiFromPathLines {
                 if ($segmentId -eq 'ISA' -and $pos -eq 13) {
                     $isaControlNumber = $formattedValue
                 }
+                if ($segmentId -eq 'ST' -and $pos -eq 2) {
+                    $stControlNumber = $formattedValue
+                }
                 $values.Add($formattedValue)
             } else {
                 if ($hasExplicitPath) {
@@ -1442,6 +1526,9 @@ function Build-SampleEdiFromPathLines {
                     $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue
                     if ($segmentId -eq 'ISA' -and $pos -eq 13) {
                         $isaControlNumber = $formattedValue
+                    }
+                    if ($segmentId -eq 'ST' -and $pos -eq 2) {
+                        $stControlNumber = $formattedValue
                     }
                     $values.Add($formattedValue)
                     continue
@@ -1482,6 +1569,9 @@ function Build-SampleEdiFromPathLines {
                 $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue
                 if ($segmentId -eq 'ISA' -and $pos -eq 13) {
                     $isaControlNumber = $formattedValue
+                }
+                if ($segmentId -eq 'ST' -and $pos -eq 2) {
+                    $stControlNumber = $formattedValue
                 }
                 $values.Add($formattedValue)
             }
@@ -1531,9 +1621,10 @@ function Build-SampleEdiFromPathLines {
 
     $txnSegmentCount = 2 + $txnDataSegmentCount
     $interchangeControlNumber = if ([string]::IsNullOrWhiteSpace($isaControlNumber)) { '000000001' } else { $isaControlNumber }
+    $functionalGroupControlNumber = if ([string]::IsNullOrWhiteSpace($stControlNumber)) { '0001' } else { $stControlNumber }
     $seLine = "SE*$txnSegmentCount*0001~"
     $segmentLines.Add($seLine)
-    $segmentLines.Add("GE*1*$interchangeControlNumber~")
+    $segmentLines.Add("GE*1*$functionalGroupControlNumber~")
     $segmentLines.Add("IEA*1*$interchangeControlNumber~")
 
     return [pscustomobject]@{
