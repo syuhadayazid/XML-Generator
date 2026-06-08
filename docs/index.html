@@ -2248,13 +2248,14 @@
         if (selectedOutputMode === "edi" && detectedTransactionSet && detectedTransactionSet !== "861") {
           message += ` Note: EDI generation is currently limited to transaction set 861. Detected hint '${detectedTransactionSet}' was ignored.`;
         }
+        const validationMessages = [...validationErrors, ...validationWarnings];
         if (validationErrors.length) {
           message += ` Validation Errors (${validationErrors.length}): ${summarizeWarnings(validationErrors, 3)}`;
         }
         if (validationWarnings.length) {
           message += ` Validation Warnings (${validationWarnings.length}): ${summarizeWarnings(validationWarnings, 3)}`;
         }
-        renderWarnings(validationWarnings);
+        renderWarnings(validationMessages);
         renderSkippedDetails(result.skippedDetails || []);
         setStatus(message, validationWarnings.length > 0 || validationErrors.length > 0);
       } catch (error) {
