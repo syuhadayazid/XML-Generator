@@ -323,6 +323,7 @@
             <label for="sefSource">SEF schema</label>
             <select id="sefSource">
               <option value="861">861 (bundled X12-861-4010.sef)</option>
+              <option value="214">214 (upload your own .sef)</option>
               <option value="other">Other (upload your own .sef)</option>
             </select>
           </div>
@@ -422,7 +423,9 @@
     let detectedTransactionSet = "";
     let ediPathValueMap = new Map();
     const NO_MAPPING_TOKEN = "__NO_MAPPING__";
-    const DEFAULT_SEF_PATH = "./X12-861-4010.sef";
+    const DEFAULT_SEF_PATHS = {
+      "861": "./X12-861-4010.sef"
+    };
     const DEFAULT_EDI_PATH_COLUMN = "EDI path";
     const DEFAULT_EDI_VALUE_COLUMN = "Value";
     let selectedFile = null;
@@ -468,7 +471,8 @@
     }
 
     function updateSefSourceUi() {
-      const useCustomSef = (sefSource && sefSource.value === "other");
+      const selectedSefSource = (sefSource && sefSource.value) ? sefSource.value : "861";
+      const useCustomSef = (selectedSefSource === "other" || selectedSefSource === "214");
       if (sefFile) {
         sefFile.disabled = !useCustomSef;
       }
@@ -1028,7 +1032,11 @@
           }
         case "GS":
           switch (position) {
-            case 1: return "OW";
+            case 1:
+              if (transactionSet === "214") {
+                return "QM";
+              }
+              return "OW";
             case 2: return "SENDER";
             case 3: return "RECEIVER";
             case 4: return new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -1135,6 +1143,11 @@
       const name = String(fileName ?? "");
       const match = name.match(/x12[_-]?(\d{3})/i);
       return match ? match[1] : "";
+    }
+
+    function resolveTransactionSetId(transactionSetHint) {
+      const candidate = String(transactionSetHint ?? "").trim();
+      return /^\d{3}$/.test(candidate) ? candidate : "861";
     }
 
     function parseSefSetTokens(setExpression) {
@@ -1262,7 +1275,7 @@
       return definitions;
     }
 
-    function buildSefSchemaModelFromText(text) {
+    function buildSefSchemaModelFromText(text, transactionSetId) {
       const lines = String(text || "").split(/\r?\n/);
       let setExpression = "";
       const segmentLines = [];
@@ -1301,8 +1314,10 @@
           return;
         }
 
-        if (inSets && /^861=/.test(line)) {
-          setExpression = line.slice(4);
+        if (inSets && /^(\d{3})=/.test(line)) {
+          if (RegExp.$1 === transactionSetId) {
+            setExpression = line.slice(4);
+          }
           return;
         }
 
@@ -1327,26 +1342,31 @@
       };
     }
 
-    async function loadSefSchemaModel() {
-      const selectedSefSource = (sefSource && sefSource.value) ? sefSource.value : "861";
-      if (selectedSefSource === "other") {
+    async function loadSefSchemaModel(transactionSetId) {
+      const selectedSefSource = (sefSource && sefSource.value) ? sefSource.value : transactionSetId;
+      if (selectedSefSource === "other" || selectedSefSource === "214") {
         const file = sefFile && sefFile.files && sefFile.files[0] ? sefFile.files[0] : null;
         if (!file) {
           return null;
         }
 
         const text = await file.text();
-        return buildSefSchemaModelFromText(text);
+        return buildSefSchemaModelFromText(text, transactionSetId);
       }
 
       try {
-        const response = await fetch(DEFAULT_SEF_PATH, { cache: "no-store" });
+        const defaultSefPath = DEFAULT_SEF_PATHS[transactionSetId] || DEFAULT_SEF_PATHS[selectedSefSource];
+        if (!defaultSefPath) {
+          return null;
+        }
+
+        const response = await fetch(defaultSefPath, { cache: "no-store" });
         if (!response.ok) {
           return null;
         }
 
         const text = await response.text();
-        return buildSefSchemaModelFromText(text);
+        return buildSefSchemaModelFromText(text, transactionSetId);
       } catch {
         return null;
       }
@@ -1375,12 +1395,12 @@
       return segments;
     }
 
-    function validateEdiAgainstSef(ediText, schemaModel) {
+    function validateEdiAgainstSef(ediText, schemaModel, transactionSetId) {
       const errors = [];
       const warnings = [];
 
       if (!schemaModel) {
-        warnings.push("SEF schema not loaded in UI. Upload a SEF file or deploy docs/X12-861-4010.sef.");
+        warnings.push(`SEF schema not loaded in UI for transaction set ${transactionSetId}. Upload a SEF file or deploy a bundled schema.`);
         return { errors, warnings };
       }
 
@@ -1481,7 +1501,7 @@
         const token = setTokens[index];
         const count = tokenCounts.has(index) ? Number(tokenCounts.get(index) || 0) : 0;
         if (token && token.isRequired && count === 0) {
-          errors.push(`Required segment ${token.segmentId} is missing according to the SEF 861 definition.`);
+          errors.push(`Required segment ${token.segmentId} is missing according to the SEF ${transactionSetId} definition.`);
         }
       }
 
@@ -1643,16 +1663,17 @@
         return "";
       }
 
+      const transactionSet = resolveTransactionSetId(effectiveTransactionSetHint);
+
       if (!occurrenceOrder.length) {
-        const fallbackKey = "X12/BRA";
+        const fallbackSegmentId = transactionSet === "214" ? "B10" : "BRA";
+        const fallbackKey = `X12/${fallbackSegmentId}`;
         segmentOccurrences.set(fallbackKey, {
-          segmentId: "BRA",
+          segmentId: fallbackSegmentId,
           elements: new Map([[1, ""], [2, ""], [3, ""]])
         });
         occurrenceOrder.push(fallbackKey);
       }
-
-      const transactionSet = "861";
       const output = [];
       let isaControlNumber = "";
       let stControlNumber = "";
@@ -2204,7 +2225,8 @@
       setStatus(`Reading ${file.name}...`);
 
       try {
-        const sefSchemaModel = await loadSefSchemaModel();
+        const transactionSetId = resolveTransactionSetId(detectedTransactionSet);
+        const sefSchemaModel = await loadSefSchemaModel(transactionSetId);
         const lines = await extractLinesFromFile(file, selectedOutputMode);
         const result = createXmlFromLines(lines);
         const validationWarnings = [];
@@ -2217,7 +2239,7 @@
           const ediBuild = buildSampleEdiFromPathLines(lines, detectedTransactionSet, ediPathValueMap);
           generatedEdi = (ediBuild && typeof ediBuild === "object") ? (ediBuild.ediText || "") : String(ediBuild || "");
 
-          const validation = validateEdiAgainstSef(generatedEdi, sefSchemaModel);
+          const validation = validateEdiAgainstSef(generatedEdi, sefSchemaModel, transactionSetId);
           if (validation.errors.length) {
             validationErrors.push(...validation.errors.map((message) => `ERROR: ${message}`));
           }

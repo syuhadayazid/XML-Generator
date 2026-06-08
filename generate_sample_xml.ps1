@@ -1,7 +1,7 @@
 $inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\xmlpath.txt"
 $outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
 $ediOutputPath = [System.IO.Path]::ChangeExtension($outputPath, ".edi")
-$sefSchemaPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12-861-4010.sef"
+$sefSchemaPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12\X12-861-4010.sef"
 $NoMappingToken = '__NO_MAPPING__'
 $xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
 $xlsxValueColumn = "Value"
@@ -560,6 +560,7 @@ if ($inputResult.PathValues) {
 }
 $used = 0
 $skipped = 0
+$skippedDetails = New-Object System.Collections.Generic.List[string]
 $malformed = New-Object System.Collections.Generic.List[string]
 
 $xmlDoc = New-Object System.Xml.XmlDocument
@@ -743,7 +744,12 @@ function Get-SampleEdiElementValue {
         }
         'GS' {
             switch ($position) {
-                1 { return 'OW' }
+                1 {
+                    switch ($transactionSet) {
+                        '214' { return 'QM' }
+                        default { return 'OW' }
+                    }
+                }
                 2 { return 'SENDER' }
                 3 { return 'RECEIVER' }
                 4 { return (Get-Date -Format 'yyyyMMdd') }
@@ -865,6 +871,46 @@ function Get-TransactionSetHintFromInputPath {
     }
 
     return $null
+}
+
+function Resolve-TransactionSetId {
+    param([string]$transactionSetHint)
+
+    $candidate = ([string]$transactionSetHint).Trim()
+    if ($candidate -match '^\d{3}$') {
+        return $candidate
+    }
+
+    return '861'
+}
+
+function Resolve-SefSchemaPath {
+    param(
+        [string]$transactionSetId,
+        [string]$preferredPath
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($preferredPath) -and (Test-Path -LiteralPath $preferredPath)) {
+        $preferredName = [System.IO.Path]::GetFileName($preferredPath)
+        if ([string]::IsNullOrWhiteSpace($transactionSetId) -or $preferredName -match "(?i)$transactionSetId") {
+            return $preferredPath
+        }
+    }
+
+    $preferredDir = if ([string]::IsNullOrWhiteSpace($preferredPath)) { $null } else { [System.IO.Path]::GetDirectoryName($preferredPath) }
+    $candidatePaths = @(
+        (if ($preferredDir) { Join-Path $preferredDir ("X12-$transactionSetId-4010.sef") } else { $null }),
+        (Join-Path 'C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12' ("X12-$transactionSetId-4010.sef")),
+        (Join-Path 'C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files' ("X12-$transactionSetId-4010.sef"))
+    )
+
+    foreach ($candidatePath in $candidatePaths) {
+        if (-not [string]::IsNullOrWhiteSpace($candidatePath) -and (Test-Path -LiteralPath $candidatePath)) {
+            return $candidatePath
+        }
+    }
+
+    return $preferredPath
 }
 
 function Parse-SefSetTokens {
@@ -1010,7 +1056,10 @@ function Parse-SefElementDefinitions {
 }
 
 function Get-SefSchemaModel {
-    param([string]$schemaPath)
+    param(
+        [string]$schemaPath,
+        [string]$transactionSetId
+    )
 
     if ([string]::IsNullOrWhiteSpace($schemaPath) -or -not (Test-Path -LiteralPath $schemaPath)) {
         return $null
@@ -1054,8 +1103,10 @@ function Get-SefSchemaModel {
             continue
         }
 
-        if ($inSets -and $line -match '^861=') {
-            $setExpression = $line.Substring(4)
+        if ($inSets -and $line -match '^(\d{3})=') {
+            if ($Matches[1] -eq $transactionSetId) {
+                $setExpression = $line.Substring(4)
+            }
             continue
         }
 
@@ -1120,7 +1171,8 @@ function Parse-EdiSegments {
 function Validate-EdiAgainstSef {
     param(
         [string]$ediText,
-        [object]$schemaModel
+        [object]$schemaModel,
+        [string]$transactionSetId
     )
 
     $errors = New-Object System.Collections.Generic.List[string]
@@ -1232,7 +1284,7 @@ function Validate-EdiAgainstSef {
         $token = $setTokens[$index]
         $count = if ($tokenCounts.ContainsKey($index)) { [int]$tokenCounts[$index] } else { 0 }
         if ($token.IsRequired -and $count -eq 0) {
-            $errors.Add("Required segment $($token.SegmentId) is missing according to the SEF 861 definition.")
+            $errors.Add("Required segment $($token.SegmentId) is missing according to the SEF $transactionSetId definition.")
         }
     }
 
@@ -1399,18 +1451,16 @@ function Build-SampleEdiFromPathLines {
         return $null
     }
 
+    $transactionSet = Resolve-TransactionSetId -transactionSetHint $effectiveTransactionSetHint
+
     if ($occurrenceOrder.Count -eq 0) {
-        $fallbackKey = 'X12/BRA'
+        $fallbackSegmentId = if ($transactionSet -eq '214') { 'B10' } else { 'BRA' }
+        $fallbackKey = "X12/$fallbackSegmentId"
         $segmentOccurrences[$fallbackKey] = [ordered]@{
-            SegmentId = 'BRA'
+            SegmentId = $fallbackSegmentId
             Elements = [ordered]@{ '1' = $null; '2' = $null; '3' = $null }
         }
         $occurrenceOrder.Add($fallbackKey)
-    }
-
-    $transactionSet = '861'
-    if (-not [string]::IsNullOrWhiteSpace($effectiveTransactionSetHint) -and $effectiveTransactionSetHint -match '^\d{3}$' -and $effectiveTransactionSetHint -ne '861') {
-        Write-Warning "EDI generator currently supports transaction set 861 only. Ignoring detected transaction set '$effectiveTransactionSetHint'."
     }
 
     $segmentLines = New-Object System.Collections.Generic.List[string]
@@ -1883,6 +1933,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
 
     if ([string]::IsNullOrWhiteSpace($line)) {
         $skipped++
+        $skippedDetails.Add("Line ${lineNo}: blank or whitespace-only input")
         continue
     }
 
@@ -1892,6 +1943,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     $split = Split-XmlPathSegments -path $clean
     if (-not $split.Valid) {
         $skipped++
+        $skippedDetails.Add("Line ${lineNo}: $($split.Error) in '$clean'")
         $malformed.Add("Line ${lineNo}: $($split.Error) in '$clean'")
         continue
     }
@@ -1899,6 +1951,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
     $segments = $split.Segments
     if ($segments.Count -eq 0) {
         $skipped++
+        $skippedDetails.Add("Line ${lineNo}: path produced no readable segments")
         continue
     }
 
@@ -1917,6 +1970,11 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
 
     if ($lineMalformed -or $parsed.Count -eq 0) {
         $skipped++
+        if ($parsed.Count -eq 0) {
+            $skippedDetails.Add("Line ${lineNo}: no valid parsed segments")
+        } else {
+            $skippedDetails.Add("Line ${lineNo}: parsing failed for one or more segments")
+        }
         continue
     }
 
@@ -1970,6 +2028,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
         $start = 1
     } else {
         $skipped++
+        $skippedDetails.Add("Line ${lineNo}: root '$($parsed[0].Name)' does not match detected root '$($root.Name)'")
         $malformed.Add("Line ${lineNo}: root '$($parsed[0].Name)' does not match detected root '$($root.Name)'")
         continue
     }
@@ -1979,6 +2038,7 @@ for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
         if ($parsed[$i].IsAttributeOnly) {
             if ($i -ne ($parsed.Count - 1)) {
                 $skipped++
+                $skippedDetails.Add("Line ${lineNo}: attribute segment '$($parsed[$i].Name)' must be the last segment in the path")
                 $malformed.Add("Line ${lineNo}: attribute segment '$($parsed[$i].Name)' must be the last segment in the path")
                 continue
             }
@@ -2037,6 +2097,7 @@ $ediGenerationWarnings = @()
 
 if ($isX12Root) {
     $transactionSetHint = Get-TransactionSetHintFromInputPath -path $inputPath
+    $transactionSetId = Resolve-TransactionSetId -transactionSetHint $transactionSetHint
     $ediBuildResult = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint -pathValueMap $pathValueMap
     $ediText = if ($ediBuildResult -and $ediBuildResult.PSObject.Properties.Name -contains 'EdiText') { [string]$ediBuildResult.EdiText } else { [string]$ediBuildResult }
     if ($ediBuildResult -and $ediBuildResult.PSObject.Properties.Name -contains 'Warnings') {
@@ -2044,8 +2105,9 @@ if ($isX12Root) {
     }
     if (-not [string]::IsNullOrWhiteSpace($ediText)) {
         $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
-        $sefSchema = Get-SefSchemaModel -schemaPath $sefSchemaPath
-        $ediValidation = Validate-EdiAgainstSef -ediText $ediText -schemaModel $sefSchema
+        $resolvedSefSchemaPath = Resolve-SefSchemaPath -transactionSetId $transactionSetId -preferredPath $sefSchemaPath
+        $sefSchema = Get-SefSchemaModel -schemaPath $resolvedSefSchemaPath -transactionSetId $transactionSetId
+        $ediValidation = Validate-EdiAgainstSef -ediText $ediText -schemaModel $sefSchema -transactionSetId $transactionSetId
         $outputFormat = 'EDI'
         $finalOutputPath = $ediOutputPath
     } else {
@@ -2083,6 +2145,12 @@ if ($ediValidation) {
 if ($malformed.Count -gt 0) {
     Write-Output "Malformed Details:"
     foreach ($entry in $malformed) {
+        Write-Output "- $entry"
+    }
+}
+if ($skippedDetails.Count -gt 0) {
+    Write-Output "Skipped Details:"
+    foreach ($entry in $skippedDetails) {
         Write-Output "- $entry"
     }
 }
