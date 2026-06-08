@@ -318,6 +318,11 @@
           </div>
 
           <div class="field">
+            <label for="sefFile">SEF schema file (optional, for EDI validation parity)</label>
+            <input id="sefFile" type="file" accept=".sef,.txt">
+          </div>
+
+          <div class="field">
             <label for="columnName">XLSX column name (optional)</label>
             <input id="columnName" type="text" placeholder="Leave empty to auto-detect">
           </div>
@@ -374,6 +379,7 @@
 
   <script>
     const inputFile = document.getElementById("inputFile");
+    const sefFile = document.getElementById("sefFile");
     const outputMode = document.getElementById("outputMode");
     const columnName = document.getElementById("columnName");
     const valueColumnName = document.getElementById("valueColumnName");
@@ -1048,49 +1054,340 @@
       return match ? match[1] : "";
     }
 
-    function validateEdiElementLengths(ediText) {
-      const errors = [];
-      const elementLengthRules = new Map([
-        ["BRA04", { min: 1, max: 1 }],
-        ["RCD02", { min: 1, max: 9 }]
-      ]);
+    function parseSefSetTokens(setExpression) {
+      const tokens = [];
+      const text = String(setExpression || "");
+      let depth = 0;
 
-      String(ediText || "").split(/~|\r?\n/).forEach((rawSegment) => {
-        const segment = String(rawSegment || "").trim();
-        if (!segment) {
+      for (let index = 0; index < text.length; index += 1) {
+        const ch = text[index];
+        if (ch === "{") {
+          depth += 1;
+          continue;
+        }
+
+        if (ch === "}") {
+          depth = Math.max(0, depth - 1);
+          continue;
+        }
+
+        if (ch !== "[" || depth > 0) {
+          continue;
+        }
+
+        const end = text.indexOf("]", index);
+        if (end < 0) {
+          break;
+        }
+
+        const content = text.slice(index + 1, end);
+        const fields = content.split(",").map((value) => String(value || "").trim());
+        const segmentField = fields[0] || "";
+        const segmentId = String(segmentField.split("@")[0] || "").trim().toUpperCase();
+        if (!/^[A-Z0-9]{2,3}$/.test(segmentId)) {
+          index = end;
+          continue;
+        }
+
+        const usage = String(fields[1] || "").trim().toUpperCase();
+        const maxUseText = String(fields[2] || "").trim();
+        let maxUse = 1;
+        if (maxUseText === ">1") {
+          maxUse = Number.MAX_SAFE_INTEGER;
+        } else if (/^\d+$/.test(maxUseText)) {
+          maxUse = Number(maxUseText);
+        }
+
+        tokens.push({
+          segmentId,
+          isRequired: usage === "M",
+          maxUse
+        });
+
+        index = end;
+      }
+
+      return tokens;
+    }
+
+    function parseSefSegmentDefinitions(lines) {
+      const definitions = new Map();
+      (lines || []).forEach((line) => {
+        const text = String(line || "").trim();
+        if (!text) {
           return;
         }
 
-        const parts = segment.split("*");
-        const segmentId = String(parts[0] || "").trim().toUpperCase();
-        if (!segmentId || parts.length <= 1) {
+        const eqIndex = text.indexOf("=");
+        if (eqIndex < 1) {
           return;
         }
 
-        for (let i = 1; i < parts.length; i += 1) {
-          const elementName = `${segmentId}${String(i).padStart(2, "0")}`;
-          if (!elementLengthRules.has(elementName)) {
-            continue;
-          }
+        const segmentId = text.slice(0, eqIndex).trim().toUpperCase();
+        if (!/^[A-Z0-9]{2,3}$/.test(segmentId)) {
+          return;
+        }
 
-          const rule = elementLengthRules.get(elementName);
-          const value = String(parts[i] || "");
-          if (!value.length) {
-            continue;
-          }
+        const body = text.slice(eqIndex + 1);
+        const matches = [...body.matchAll(/\[([^\]]+)\]/g)];
+        const requiredPositions = [];
+        const elementIds = [];
 
-          if (rule.max > 0 && value.length > rule.max) {
-            errors.push(`${elementName}: element too long, actual: ${value.length}, standard: ${rule.max}`);
-            continue;
+        matches.forEach((match, index) => {
+          const fields = String(match[1] || "").split(",").map((value) => String(value || "").trim());
+          const elementId = fields[0] || "";
+          const usage = String(fields[1] || "").toUpperCase();
+          elementIds.push(elementId);
+          if (usage === "M") {
+            requiredPositions.push(index + 1);
           }
+        });
 
-          if (rule.min > 0 && value.length < rule.min) {
-            errors.push(`${elementName}: element too short, actual: ${value.length}, standard: ${rule.min}`);
-          }
+        definitions.set(segmentId, {
+          segmentId,
+          elementCount: matches.length,
+          requiredPositions,
+          elementIds
+        });
+      });
+
+      return definitions;
+    }
+
+    function parseSefElementDefinitions(lines) {
+      const definitions = new Map();
+      (lines || []).forEach((line) => {
+        const text = String(line || "").trim();
+        const match = text.match(/^(\d+)=([A-Z]{1,3}),(\d+),(\d+)\s*$/);
+        if (!match) {
+          return;
+        }
+
+        const elementId = match[1];
+        if (definitions.has(elementId)) {
+          return;
+        }
+
+        definitions.set(elementId, {
+          elementId,
+          dataType: match[2],
+          minLength: Number(match[3]),
+          maxLength: Number(match[4])
+        });
+      });
+
+      return definitions;
+    }
+
+    function buildSefSchemaModelFromText(text) {
+      const lines = String(text || "").split(/\r?\n/);
+      let setExpression = "";
+      const segmentLines = [];
+      const elementLines = [];
+      let inSets = false;
+      let inSegs = false;
+      let inElms = false;
+
+      lines.forEach((rawLine) => {
+        const line = String(rawLine || "");
+        if (/^\.SETS/.test(line)) {
+          inSets = true;
+          inSegs = false;
+          inElms = false;
+          return;
+        }
+
+        if (/^\.SEGS/.test(line)) {
+          inSets = false;
+          inSegs = true;
+          inElms = false;
+          return;
+        }
+
+        if (/^\.ELMS/.test(line)) {
+          inSets = false;
+          inSegs = false;
+          inElms = true;
+          return;
+        }
+
+        if (/^\.[A-Z]/.test(line)) {
+          inSets = false;
+          inSegs = false;
+          inElms = false;
+          return;
+        }
+
+        if (inSets && /^861=/.test(line)) {
+          setExpression = line.slice(4);
+          return;
+        }
+
+        if (inSegs) {
+          segmentLines.push(line);
+          return;
+        }
+
+        if (inElms) {
+          elementLines.push(line);
         }
       });
 
-      return errors;
+      if (!setExpression.trim()) {
+        return null;
+      }
+
+      return {
+        setTokens: parseSefSetTokens(setExpression),
+        segmentDefinitions: parseSefSegmentDefinitions(segmentLines),
+        elementDefinitions: parseSefElementDefinitions(elementLines)
+      };
+    }
+
+    async function loadSefSchemaModel() {
+      const file = sefFile && sefFile.files && sefFile.files[0] ? sefFile.files[0] : null;
+      if (!file) {
+        return null;
+      }
+
+      const text = await file.text();
+      return buildSefSchemaModelFromText(text);
+    }
+
+    function parseEdiSegments(ediText) {
+      const segments = [];
+      String(ediText || "").split(/~\s*/).forEach((rawSegment) => {
+        const segmentText = String(rawSegment || "").trim();
+        if (!segmentText) {
+          return;
+        }
+
+        const parts = segmentText.split("*");
+        const segmentId = String(parts[0] || "").trim().toUpperCase();
+        if (!/^[A-Z0-9]{2,3}$/.test(segmentId)) {
+          return;
+        }
+
+        segments.push({
+          segmentId,
+          elements: parts.slice(1)
+        });
+      });
+
+      return segments;
+    }
+
+    function validateEdiAgainstSef(ediText, schemaModel) {
+      const errors = [];
+      const warnings = [];
+
+      if (!schemaModel) {
+        warnings.push("SEF schema not loaded in UI. Upload SEF file to match script validation output.");
+        return { errors, warnings };
+      }
+
+      const segments = parseEdiSegments(ediText);
+      if (!segments.length) {
+        errors.push("Generated EDI contains no readable segments.");
+        return { errors, warnings };
+      }
+
+      const setTokens = Array.isArray(schemaModel.setTokens) ? schemaModel.setTokens : [];
+      const segmentDefinitions = schemaModel.segmentDefinitions || new Map();
+      const elementDefinitions = schemaModel.elementDefinitions || new Map();
+      const tokenCounts = new Map();
+      let patternIndex = 0;
+      const topLevelSegmentIds = new Set(setTokens.map((token) => token.segmentId));
+
+      segments.forEach((segment, index) => {
+        const lineNo = index + 1;
+        if (segmentDefinitions.has(segment.segmentId)) {
+          const definition = segmentDefinitions.get(segment.segmentId);
+          if (segment.elements.length > definition.elementCount) {
+            errors.push(`Segment ${segment.segmentId} at position ${lineNo} has ${segment.elements.length} elements, exceeding SEF definition of ${definition.elementCount}.`);
+          }
+
+          (definition.requiredPositions || []).forEach((requiredPos) => {
+            const value = segment.elements.length >= requiredPos ? String(segment.elements[requiredPos - 1] || "") : "";
+            if (!value.length) {
+              errors.push(`Segment ${segment.segmentId} at position ${lineNo} is missing required element ${segment.segmentId}${String(requiredPos).padStart(2, "0")}.`);
+            }
+          });
+
+          for (let pos = 1; pos <= segment.elements.length; pos += 1) {
+            const elementId = (definition.elementIds && definition.elementIds[pos - 1]) ? String(definition.elementIds[pos - 1]) : "";
+            if (!elementId || !elementDefinitions.has(elementId)) {
+              continue;
+            }
+
+            const elementRule = elementDefinitions.get(elementId);
+            const value = String(segment.elements[pos - 1] || "");
+            if (!value.length) {
+              continue;
+            }
+
+            const actualLength = value.length;
+            const minLength = Number(elementRule.minLength || 0);
+            const maxLength = Number(elementRule.maxLength || 0);
+            const elementName = `${segment.segmentId}${String(pos).padStart(2, "0")}`;
+
+            if (maxLength > 0 && actualLength > maxLength) {
+              errors.push(`${elementName}: element too long, actual: ${actualLength}, standard: ${maxLength}`);
+              continue;
+            }
+
+            if (minLength > 0 && actualLength < minLength) {
+              errors.push(`${elementName}: element too short, actual: ${actualLength}, standard: ${minLength}`);
+            }
+          }
+        } else {
+          warnings.push(`Segment ${segment.segmentId} at position ${lineNo} is not defined in the loaded SEF.`);
+        }
+
+        if (!topLevelSegmentIds.has(segment.segmentId)) {
+          return;
+        }
+
+        let matched = false;
+        for (let candidateIndex = patternIndex; candidateIndex < setTokens.length; candidateIndex += 1) {
+          const candidate = setTokens[candidateIndex];
+          if (!candidate || candidate.segmentId !== segment.segmentId) {
+            continue;
+          }
+
+          for (let skippedIndex = patternIndex; skippedIndex < candidateIndex; skippedIndex += 1) {
+            const skipped = setTokens[skippedIndex];
+            const skippedCount = tokenCounts.has(skippedIndex) ? Number(tokenCounts.get(skippedIndex) || 0) : 0;
+            if (skipped && skipped.isRequired && skippedCount === 0) {
+              warnings.push(`Segment ${segment.segmentId} at position ${lineNo} appears before required segment ${skipped.segmentId} in the SEF sequence.`);
+            }
+          }
+
+          const currentCount = tokenCounts.has(candidateIndex) ? Number(tokenCounts.get(candidateIndex) || 0) : 0;
+          if (currentCount >= Number(candidate.maxUse || 1)) {
+            continue;
+          }
+
+          tokenCounts.set(candidateIndex, currentCount + 1);
+          patternIndex = candidateIndex;
+          matched = true;
+          break;
+        }
+
+        if (!matched) {
+          warnings.push(`Segment ${segment.segmentId} at position ${lineNo} does not match expected SEF sequence.`);
+        }
+      });
+
+      for (let index = 0; index < setTokens.length; index += 1) {
+        const token = setTokens[index];
+        const count = tokenCounts.has(index) ? Number(tokenCounts.get(index) || 0) : 0;
+        if (token && token.isRequired && count === 0) {
+          errors.push(`Required segment ${token.segmentId} is missing according to the SEF 861 definition.`);
+        }
+      }
+
+      return { errors, warnings };
     }
 
     function buildSampleEdiFromPathLines(lines, transactionSetHint, pathValueMap) {
@@ -1774,6 +2071,7 @@
       setStatus(`Reading ${file.name}...`);
 
       try {
+        const sefSchemaModel = await loadSefSchemaModel();
         const lines = await extractLinesFromFile(file, selectedOutputMode);
         const result = createXmlFromLines(lines);
         generatedXml = result.xml;
@@ -1787,9 +2085,12 @@
             result.malformed.push(...ediBuild.warnings);
           }
 
-          const lengthErrors = validateEdiElementLengths(generatedEdi);
-          if (lengthErrors.length) {
-            result.malformed.push(...lengthErrors.map((message) => `ERROR: ${message}`));
+          const validation = validateEdiAgainstSef(generatedEdi, sefSchemaModel);
+          if (validation.errors.length) {
+            result.malformed.push(...validation.errors.map((message) => `ERROR: ${message}`));
+          }
+          if (validation.warnings.length) {
+            result.malformed.push(...validation.warnings.map((message) => `WARNING: ${message}`));
           }
         }
 
