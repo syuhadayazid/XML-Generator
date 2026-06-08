@@ -2055,7 +2055,9 @@
         const wantedValue = useEdiValueMapping ? normalizeHeader(effectiveValueColumn) : "";
         const columnNameProvided = Boolean(wanted);
 
-        const candidateSheets = [sheetName];
+        const candidateSheets = selectedSheet
+          ? [sheetName, ...workbook.SheetNames.filter((name) => name !== sheetName)]
+          : [...workbook.SheetNames];
         for (const currentSheetName of candidateSheets) {
           const sheet = workbook.Sheets[currentSheetName];
           if (!sheet) {
@@ -2123,18 +2125,30 @@
           }
         }
 
-        const selectedRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
-        const selectedRowsNoHeader = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" });
-        if (!selectedRows.length && !selectedRowsNoHeader.length) {
-          throw new Error("No rows found in the selected worksheet.");
+        let fallbackNonEmptySheet = null;
+        for (const currentSheetName of workbook.SheetNames) {
+          const currentSheet = workbook.Sheets[currentSheetName];
+          if (!currentSheet) {
+            continue;
+          }
+
+          const currentRows = XLSX.utils.sheet_to_json(currentSheet, { defval: "" });
+          const currentRowsNoHeader = XLSX.utils.sheet_to_json(currentSheet, { header: 1, defval: "" });
+          if (currentRows.length || currentRowsNoHeader.length) {
+            fallbackNonEmptySheet = currentSheetName;
+            break;
+          }
         }
 
-        const headers = Object.keys(selectedRows[0]).map((header) => String(header ?? ""));
-        if (!columnNameProvided) {
-          throw new Error(`Could not auto-detect a path column. Available columns: ${headers.join(", ")}`);
+        if (!fallbackNonEmptySheet) {
+          throw new Error("No rows found in any worksheet.");
         }
 
-        throw new Error(`Column '${effectivePathColumn}' was not found. Available columns: ${headers.join(", ")}`);
+        if (selectedSheet) {
+          throw new Error(`No rows found in worksheet '${sheetName}'. Try worksheet '${fallbackNonEmptySheet}' or leave worksheet name blank for auto-detect.`);
+        }
+
+        throw new Error(`Could not detect a usable mapping column. Try worksheet '${fallbackNonEmptySheet}' or specify the XLSX column name manually.`);
       }
 
       throw new Error("Unsupported file type. Please upload a .txt, .xlsx, .edi, or .x12 file.");
