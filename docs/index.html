@@ -420,6 +420,7 @@
     const DEFAULT_EDI_VALUE_COLUMN = "Value";
     let selectedFile = null;
     let toastTimer = null;
+    let lastDetectedColumnLabel = "";
 
     function setSelectedFile(file) {
       selectedFile = file || null;
@@ -560,6 +561,16 @@
     function setStatus(message, isWarn = false) {
       statusBox.textContent = message;
       statusBox.className = isWarn ? "status warn" : "status";
+    }
+
+    function applyDetectedColumn(columnLabel) {
+      const text = String(columnLabel || "").trim();
+      if (!text || !columnName) {
+        return;
+      }
+
+      lastDetectedColumnLabel = text;
+      columnName.value = text;
     }
 
     function showToast(message) {
@@ -2049,6 +2060,7 @@
           if (!columnNameProvided) {
             const noHeaderMatch = detectBestNoHeaderColumn(sheet);
             if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
+              applyDetectedColumn(`Column ${noHeaderMatch.columnIndex + 1}`);
               setStatus(`Auto-detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${currentSheetName}'.`);
               return maybeConvertDetectedEdi(noHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${currentSheetName}'`);
             }
@@ -2060,6 +2072,7 @@
             const headers = Object.keys(rows[0]).map((header) => String(header ?? ""));
             const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
             if (resolvedHeader) {
+              applyDetectedColumn(resolvedHeader);
               setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
               let resolvedValueHeader = useEdiValueMapping && wantedValue
                 ? headers.find((header) => normalizeHeader(header) === wantedValue)
@@ -2099,6 +2112,7 @@
         if (columnNameProvided) {
           const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
           if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
+            applyDetectedColumn(`Embedded header row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1}`);
             setStatus(`Detected embedded header '${effectivePathColumn}' in worksheet '${embeddedHeaderMatch.sheetName}', row ${embeddedHeaderMatch.rowNumber}.`);
             return maybeConvertDetectedEdi(embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${embeddedHeaderMatch.sheetName}'`);
           }
