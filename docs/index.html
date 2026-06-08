@@ -1204,6 +1204,7 @@
 
       const transactionSet = "861";
       const output = [];
+      let isaControlNumber = "";
 
       function emitSegment(segmentId, sourceMap, forceElementCount = 0) {
         const positionMap = sourceMap ? new Map(sourceMap) : new Map();
@@ -1221,6 +1222,11 @@
         for (let pos = 1; pos <= maxPos; pos += 1) {
           if (segmentId === "ST" && pos === 1) {
             values.push(formatEdiElementValue(segmentId, pos, transactionSet));
+            continue;
+          }
+
+          if (segmentId === "IEA" && pos === 2 && isaControlNumber) {
+            values.push(isaControlNumber);
             continue;
           }
 
@@ -1248,7 +1254,11 @@
           }
 
           const rawValue = explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet);
-          values.push(formatEdiElementValue(segmentId, pos, rawValue));
+          const formattedValue = formatEdiElementValue(segmentId, pos, rawValue);
+          if (segmentId === "ISA" && pos === 13) {
+            isaControlNumber = formattedValue;
+          }
+          values.push(formattedValue);
         }
         output.push(`${segmentId}*${values.join("*")}~`);
       }

@@ -988,6 +988,7 @@ function Get-SefSchemaModel {
     $lines = Get-Content -LiteralPath $schemaPath
     $setExpression = $null
     $segmentLines = New-Object System.Collections.Generic.List[string]
+    $isaControlNumber = $null
     $inSets = $false
     $inSegs = $false
 
@@ -1372,6 +1373,11 @@ function Build-SampleEdiFromPathLines {
                 continue
             }
 
+            if ($segmentId -eq 'IEA' -and $pos -eq 2 -and -not [string]::IsNullOrWhiteSpace($isaControlNumber)) {
+                $values.Add($isaControlNumber)
+                continue
+            }
+
             $explicitValue = $null
             $posKey = [string]$pos
             if ($elementMap.Contains($posKey)) {
@@ -1379,7 +1385,11 @@ function Build-SampleEdiFromPathLines {
             }
 
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
-                $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue))
+                $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue
+                if ($segmentId -eq 'ISA' -and $pos -eq 13) {
+                    $isaControlNumber = $formattedValue
+                }
+                $values.Add($formattedValue)
             } else {
                 $hasLowerPresent = $false
                 $hasHigherPresent = $false
@@ -1413,7 +1423,11 @@ function Build-SampleEdiFromPathLines {
                 }
 
                 $sampleValue = Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet
-                $values.Add((Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue))
+                $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue
+                if ($segmentId -eq 'ISA' -and $pos -eq 13) {
+                    $isaControlNumber = $formattedValue
+                }
+                $values.Add($formattedValue)
             }
         }
 
