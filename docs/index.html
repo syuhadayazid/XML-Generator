@@ -320,7 +320,15 @@
           </div>
 
           <div class="field">
-            <label for="sefFile">SEF schema file (optional, overrides bundled X12-861-4010.sef)</label>
+            <label for="sefSource">SEF schema</label>
+            <select id="sefSource">
+              <option value="861">861 (bundled X12-861-4010.sef)</option>
+              <option value="other">Other (upload your own .sef)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="sefFile">Custom SEF file (used when SEF schema is Other)</label>
             <input id="sefFile" type="file" accept=".sef,.txt">
           </div>
 
@@ -381,6 +389,7 @@
 
   <script>
     const inputFile = document.getElementById("inputFile");
+    const sefSource = document.getElementById("sefSource");
     const sefFile = document.getElementById("sefFile");
     const outputMode = document.getElementById("outputMode");
     const columnName = document.getElementById("columnName");
@@ -398,6 +407,7 @@
     const warningList = document.getElementById("warningList");
     const toast = document.getElementById("toast");
     const valueColumnField = valueColumnName ? valueColumnName.closest(".field") : null;
+    const sefFileField = sefFile ? sefFile.closest(".field") : null;
 
     let generatedXml = "";
     let generatedEdi = "";
@@ -439,6 +449,16 @@
         if (valueColumnName && !String(valueColumnName.value || "").trim()) {
           valueColumnName.value = DEFAULT_EDI_VALUE_COLUMN;
         }
+      }
+    }
+
+    function updateSefSourceUi() {
+      const useCustomSef = (sefSource && sefSource.value === "other");
+      if (sefFile) {
+        sefFile.disabled = !useCustomSef;
+      }
+      if (sefFileField) {
+        sefFileField.style.opacity = useCustomSef ? "1" : "0.6";
       }
     }
 
@@ -1260,8 +1280,13 @@
     }
 
     async function loadSefSchemaModel() {
-      const file = sefFile && sefFile.files && sefFile.files[0] ? sefFile.files[0] : null;
-      if (file) {
+      const selectedSefSource = (sefSource && sefSource.value) ? sefSource.value : "861";
+      if (selectedSefSource === "other") {
+        const file = sefFile && sefFile.files && sefFile.files[0] ? sefFile.files[0] : null;
+        if (!file) {
+          return null;
+        }
+
         const text = await file.text();
         return buildSefSchemaModelFromText(text);
       }
@@ -2179,7 +2204,14 @@
       });
     }
 
+    if (sefSource) {
+      sefSource.addEventListener("change", () => {
+        updateSefSourceUi();
+      });
+    }
+
     updateOutputModeUi();
+    updateSefSourceUi();
 
     downloadButton.addEventListener("click", () => {
       if (!generatedXml) {
