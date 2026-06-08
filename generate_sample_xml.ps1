@@ -2,6 +2,7 @@ $inputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample f
 $outputPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\XML Generator\sample.xml"
 $ediOutputPath = [System.IO.Path]::ChangeExtension($outputPath, ".edi")
 $sefSchemaPath = "C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12-861-4010.sef"
+$NoMappingToken = '__NO_MAPPING__'
 $xlsxPathColumn = "Element Xpath or Segment, Loop, Element Identifier"
 $xlsxValueColumn = "Value"
 $xlsxWorksheetName = $null
@@ -119,7 +120,7 @@ function Resolve-EdiMappedValue {
     }
 
     if ($text -match '(?i)^no\s+mapping$') {
-        return $null
+        return $NoMappingToken
     }
 
     # If the cell looks like a guidance sentence, prefer fallback sample defaults.
@@ -1391,6 +1392,11 @@ function Build-SampleEdiFromPathLines {
             }
 
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
+                if ($explicitValue -eq $NoMappingToken) {
+                    $values.Add('')
+                    continue
+                }
+
                 $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue
                 if ($segmentId -eq 'ISA' -and $pos -eq 13) {
                     $isaControlNumber = $formattedValue

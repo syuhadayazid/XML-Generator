@@ -395,6 +395,7 @@
     let generatedEdi = "";
     let detectedTransactionSet = "";
     let ediPathValueMap = new Map();
+    const NO_MAPPING_TOKEN = "__NO_MAPPING__";
     let selectedFile = null;
     let toastTimer = null;
 
@@ -828,7 +829,7 @@
       }
 
       if (/^no\s+mapping$/i.test(text)) {
-        return "";
+        return NO_MAPPING_TOKEN;
       }
 
       if (/(format|hardcode|current\s+date|current\s+time|expressed\s+as|for\s+example)/i.test(text)) {
@@ -1237,6 +1238,11 @@
 
           const hasExplicitPath = positionMap.has(pos);
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
+          if (explicitValue === NO_MAPPING_TOKEN) {
+            values.push("");
+            continue;
+          }
+
           if (!explicitValue && hasExplicitPath) {
             if (segmentId === "PID") {
               values.push("");
