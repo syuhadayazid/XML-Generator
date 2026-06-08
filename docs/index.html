@@ -378,6 +378,12 @@
               <li>No warnings.</li>
             </ul>
           </section>
+          <section class="output">
+            <h3>Skipped Lines</h3>
+            <ul id="skippedList" class="warning-list">
+              <li>No skipped lines.</li>
+            </ul>
+          </section>
         </div>
       </section>
 
@@ -405,6 +411,7 @@
     const dropzone = document.getElementById("dropzone");
     const selectedFileTag = document.getElementById("selectedFile");
     const warningList = document.getElementById("warningList");
+    const skippedList = document.getElementById("skippedList");
     const toast = document.getElementById("toast");
     const valueColumnField = valueColumnName ? valueColumnName.closest(".field") : null;
     const sefSourceField = sefSource ? sefSource.closest(".field") : null;
@@ -499,6 +506,22 @@
         li.appendChild(lineFix);
         li.appendChild(lineAutoFix);
         warningList.appendChild(li);
+      });
+    }
+
+    function renderSkippedDetails(items) {
+      skippedList.innerHTML = "";
+      if (!items || items.length === 0) {
+        const li = document.createElement("li");
+        li.textContent = "No skipped lines.";
+        skippedList.appendChild(li);
+        return;
+      }
+
+      items.slice(0, 50).forEach((msg) => {
+        const li = document.createElement("li");
+        li.textContent = String(msg || "");
+        skippedList.appendChild(li);
       });
     }
 
@@ -1951,12 +1974,14 @@
       let used = 0;
       let skipped = 0;
       const malformed = [];
+      const skippedDetails = [];
 
       for (let index = 0; index < lines.length; index += 1) {
         const lineNo = index + 1;
         const rawLine = lines[index];
         if (!rawLine || !String(rawLine).trim()) {
           skipped += 1;
+          skippedDetails.push(`Line ${lineNo}: blank or whitespace-only input`);
           continue;
         }
 
@@ -1971,6 +1996,7 @@
           const segments = splitXmlPathSegments(clean).map(parseSegment);
           if (segments.length === 0) {
             skipped += 1;
+            skippedDetails.push(`Line ${lineNo}: path produced no readable segments`);
             continue;
           }
 
@@ -1980,6 +2006,7 @@
 
           if (segments[0].name !== root.name) {
             skipped += 1;
+            skippedDetails.push(`Line ${lineNo}: root '${segments[0].name}' does not match detected root '${root.name}'`);
             malformed.push(`Line ${lineNo}: root '${segments[0].name}' does not match detected root '${root.name}' [auto-fix attempted: ${autoFixAttempted ? "yes" : "no"}]`);
             continue;
           }
@@ -2007,6 +2034,7 @@
           used += 1;
         } catch (error) {
           skipped += 1;
+          skippedDetails.push(`Line ${lineNo}: ${error.message}`);
           malformed.push(`Line ${lineNo}: ${error.message} [auto-fix attempted: ${autoFixAttempted ? "yes" : "no"}]`);
         }
       }
@@ -2016,7 +2044,7 @@
       }
 
       const xml = `<?xml version="1.0" encoding="utf-8"?>\n${serializeNode(root)}`;
-      return { xml, used, skipped, malformed, rootName: root.name };
+      return { xml, used, skipped, malformed, skippedDetails, rootName: root.name };
     }
 
     async function extractLinesFromFile(file, selectedOutputMode = "xml") {
@@ -2172,6 +2200,7 @@
       ediPathValueMap = new Map();
       xmlPreview.textContent = "Working...";
       renderWarnings([]);
+      renderSkippedDetails([]);
       setStatus(`Reading ${file.name}...`);
 
       try {
@@ -2226,10 +2255,12 @@
           message += ` Validation Warnings (${validationWarnings.length}): ${summarizeWarnings(validationWarnings, 3)}`;
         }
         renderWarnings(validationWarnings);
+        renderSkippedDetails(result.skippedDetails || []);
         setStatus(message, validationWarnings.length > 0 || validationErrors.length > 0);
       } catch (error) {
         xmlPreview.textContent = "Generation failed.";
         renderWarnings([error.message]);
+        renderSkippedDetails([]);
         setStatus(error.message, true);
       } finally {
         generateButton.disabled = false;
