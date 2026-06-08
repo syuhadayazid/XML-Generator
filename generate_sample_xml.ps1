@@ -989,7 +989,6 @@ function Get-SefSchemaModel {
     $lines = Get-Content -LiteralPath $schemaPath
     $setExpression = $null
     $segmentLines = New-Object System.Collections.Generic.List[string]
-    $isaControlNumber = $null
     $inSets = $false
     $inSegs = $false
 
@@ -1335,6 +1334,7 @@ function Build-SampleEdiFromPathLines {
     }
 
     $segmentLines = New-Object System.Collections.Generic.List[string]
+    $isaControlNumber = $null
 
     $emitSegment = {
         param([string]$segmentId, [hashtable]$sourceMap, [int]$forceElementCount)
@@ -1392,6 +1392,16 @@ function Build-SampleEdiFromPathLines {
             }
 
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
+                if ($segmentId -eq 'GS' -and $pos -eq 2 -and $explicitValue -eq 'SAMPLE_VALUE' -and -not [string]::IsNullOrWhiteSpace($gsSenderFallback)) {
+                    $values.Add($gsSenderFallback)
+                    continue
+                }
+
+                if ($segmentId -eq 'GS' -and $pos -eq 3 -and $explicitValue -eq 'SAMPLE_VALUE' -and -not [string]::IsNullOrWhiteSpace($gsReceiverFallback)) {
+                    $values.Add($gsReceiverFallback)
+                    continue
+                }
+
                 if ($explicitValue -eq $NoMappingToken) {
                     $values.Add('')
                     continue
@@ -1476,6 +1486,13 @@ function Build-SampleEdiFromPathLines {
     $isaMap = if ($controlElementMaps.ContainsKey('ISA')) { $controlElementMaps['ISA'] } else { $null }
     $gsMap = if ($controlElementMaps.ContainsKey('GS')) { $controlElementMaps['GS'] } else { $null }
     $stMap = if ($controlElementMaps.ContainsKey('ST')) { $controlElementMaps['ST'] } else { $null }
+
+    $gsSenderSource = if ($isaMap -and $isaMap.Contains('6')) { [string]$isaMap['6'] } else { [string](Get-SampleEdiElementValue -segmentId 'ISA' -position 6 -transactionSet $transactionSet) }
+    $gsSenderFallback = [string](Format-EdiElementValue -segmentId 'ISA' -position 6 -value $gsSenderSource)
+    $gsSenderFallback = $gsSenderFallback.Trim()
+    $gsReceiverSource = if ($isaMap -and $isaMap.Contains('8')) { [string]$isaMap['8'] } else { [string](Get-SampleEdiElementValue -segmentId 'ISA' -position 8 -transactionSet $transactionSet) }
+    $gsReceiverFallback = [string](Format-EdiElementValue -segmentId 'ISA' -position 8 -value $gsReceiverSource)
+    $gsReceiverFallback = $gsReceiverFallback.Trim()
 
     & $emitSegment 'ISA' $isaMap 16
     & $emitSegment 'GS' $gsMap 8

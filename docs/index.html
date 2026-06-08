@@ -1207,6 +1207,18 @@
       const output = [];
       let isaControlNumber = "";
 
+      const isaMap = controlElementMaps.get("ISA");
+      const gsSenderFallback = formatEdiElementValue(
+        "ISA",
+        6,
+        (isaMap && isaMap.has(6)) ? String(isaMap.get(6) ?? "") : getSampleEdiElementValue("ISA", 6, transactionSet)
+      ).trim();
+      const gsReceiverFallback = formatEdiElementValue(
+        "ISA",
+        8,
+        (isaMap && isaMap.has(8)) ? String(isaMap.get(8) ?? "") : getSampleEdiElementValue("ISA", 8, transactionSet)
+      ).trim();
+
       function emitSegment(segmentId, sourceMap, forceElementCount = 0) {
         const positionMap = sourceMap ? new Map(sourceMap) : new Map();
         const positions = Array.from(positionMap.keys());
@@ -1238,6 +1250,16 @@
 
           const hasExplicitPath = positionMap.has(pos);
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
+          if (segmentId === "GS" && pos === 2 && explicitValue === "SAMPLE_VALUE" && gsSenderFallback) {
+            values.push(gsSenderFallback);
+            continue;
+          }
+
+          if (segmentId === "GS" && pos === 3 && explicitValue === "SAMPLE_VALUE" && gsReceiverFallback) {
+            values.push(gsReceiverFallback);
+            continue;
+          }
+
           if (explicitValue === NO_MAPPING_TOKEN) {
             values.push("");
             continue;
