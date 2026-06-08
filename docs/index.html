@@ -319,7 +319,7 @@
           </div>
 
           <div class="field">
-            <label for="sefFile">SEF schema file (optional, for EDI validation parity)</label>
+            <label for="sefFile">SEF schema file (optional, overrides bundled X12-861-4010.sef)</label>
             <input id="sefFile" type="file" accept=".sef,.txt">
           </div>
 
@@ -403,6 +403,7 @@
     let detectedTransactionSet = "";
     let ediPathValueMap = new Map();
     const NO_MAPPING_TOKEN = "__NO_MAPPING__";
+    const DEFAULT_SEF_PATH = "./X12-861-4010.sef";
     let selectedFile = null;
     let toastTimer = null;
 
@@ -1247,12 +1248,22 @@
 
     async function loadSefSchemaModel() {
       const file = sefFile && sefFile.files && sefFile.files[0] ? sefFile.files[0] : null;
-      if (!file) {
-        return null;
+      if (file) {
+        const text = await file.text();
+        return buildSefSchemaModelFromText(text);
       }
 
-      const text = await file.text();
-      return buildSefSchemaModelFromText(text);
+      try {
+        const response = await fetch(DEFAULT_SEF_PATH, { cache: "no-store" });
+        if (!response.ok) {
+          return null;
+        }
+
+        const text = await response.text();
+        return buildSefSchemaModelFromText(text);
+      } catch {
+        return null;
+      }
     }
 
     function parseEdiSegments(ediText) {
@@ -1283,7 +1294,7 @@
       const warnings = [];
 
       if (!schemaModel) {
-        warnings.push("SEF schema not loaded in UI. Upload SEF file to match script validation output.");
+        warnings.push("SEF schema not loaded in UI. Upload a SEF file or deploy docs/X12-861-4010.sef.");
         return { errors, warnings };
       }
 
