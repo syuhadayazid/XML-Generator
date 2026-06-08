@@ -563,14 +563,19 @@
       statusBox.className = isWarn ? "status warn" : "status";
     }
 
-    function applyDetectedColumn(columnLabel) {
+    function applyDetectedColumn(columnLabel, options = {}) {
       const text = String(columnLabel || "").trim();
       if (!text || !columnName) {
         return;
       }
 
+      const { writeValue = false } = options;
       lastDetectedColumnLabel = text;
-      columnName.value = text;
+      if (writeValue) {
+        columnName.value = text;
+      } else {
+        columnName.placeholder = `Auto-detected: ${text}`;
+      }
     }
 
     function showToast(message) {
@@ -2072,7 +2077,7 @@
             const headers = Object.keys(rows[0]).map((header) => String(header ?? ""));
             const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
             if (resolvedHeader) {
-              applyDetectedColumn(resolvedHeader);
+              applyDetectedColumn(resolvedHeader, { writeValue: true });
               setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
               let resolvedValueHeader = useEdiValueMapping && wantedValue
                 ? headers.find((header) => normalizeHeader(header) === wantedValue)
@@ -2112,14 +2117,15 @@
         if (columnNameProvided) {
           const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
           if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
-            applyDetectedColumn(`Embedded header row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1}`);
+            applyDetectedColumn(`${effectivePathColumn} (row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1})`);
             setStatus(`Detected embedded header '${effectivePathColumn}' in worksheet '${embeddedHeaderMatch.sheetName}', row ${embeddedHeaderMatch.rowNumber}.`);
             return maybeConvertDetectedEdi(embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${embeddedHeaderMatch.sheetName}'`);
           }
         }
 
         const selectedRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
-        if (!selectedRows.length) {
+        const selectedRowsNoHeader = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "" });
+        if (!selectedRows.length && !selectedRowsNoHeader.length) {
           throw new Error("No rows found in the selected worksheet.");
         }
 
