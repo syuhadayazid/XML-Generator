@@ -1378,6 +1378,11 @@ function Build-SampleEdiFromPathLines {
                 continue
             }
 
+            if ($segmentId -eq 'GE' -and $pos -eq 2 -and -not [string]::IsNullOrWhiteSpace($isaControlNumber)) {
+                $values.Add($isaControlNumber)
+                continue
+            }
+
             $explicitValue = $null
             $posKey = [string]$pos
             if ($elementMap.Contains($posKey)) {
@@ -1461,10 +1466,11 @@ function Build-SampleEdiFromPathLines {
     }
 
     $txnSegmentCount = 2 + $txnDataSegmentCount
+    $interchangeControlNumber = if ([string]::IsNullOrWhiteSpace($isaControlNumber)) { '000000001' } else { $isaControlNumber }
     $seLine = "SE*$txnSegmentCount*0001~"
     $segmentLines.Add($seLine)
-    $segmentLines.Add('GE*1*1~')
-    $segmentLines.Add('IEA*1*000000001~')
+    $segmentLines.Add("GE*1*$interchangeControlNumber~")
+    $segmentLines.Add("IEA*1*$interchangeControlNumber~")
 
     return ($segmentLines -join [Environment]::NewLine)
 }

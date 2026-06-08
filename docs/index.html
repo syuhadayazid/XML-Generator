@@ -1230,6 +1230,11 @@
             continue;
           }
 
+          if (segmentId === "GE" && pos === 2 && isaControlNumber) {
+            values.push(isaControlNumber);
+            continue;
+          }
+
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
           const hasLowerPresent = presentPositions.some((presentPos) => presentPos < pos);
           const hasHigherPresent = presentPositions.some((presentPos) => presentPos > pos);
@@ -1279,9 +1284,10 @@
       });
 
       const transactionSegmentCount = 2 + txnDataSegmentCount;
+      const interchangeControlNumber = isaControlNumber || "000000001";
       output.push(`SE*${transactionSegmentCount}*0001~`);
-      output.push("GE*1*1~");
-      output.push("IEA*1*000000001~");
+      output.push(`GE*1*${interchangeControlNumber}~`);
+      output.push(`IEA*1*${interchangeControlNumber}~`);
 
       return output.join("\n");
     }
