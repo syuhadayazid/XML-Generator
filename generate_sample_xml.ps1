@@ -1437,6 +1437,12 @@ function Build-SampleEdiFromPathLines {
         }
 
         $segmentText = $segmentId
+        if ($segmentId -eq 'RCD') {
+            while ($values.Count -gt 0 -and [string]::IsNullOrEmpty($values[$values.Count - 1])) {
+                $values.RemoveAt($values.Count - 1)
+            }
+        }
+
         if ($values.Count -gt 0) {
             $segmentText += '*' + ($values -join '*')
         }

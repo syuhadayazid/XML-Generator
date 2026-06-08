@@ -1265,6 +1265,12 @@
           }
           values.push(formattedValue);
         }
+        if (segmentId === "RCD") {
+          while (values.length && values[values.length - 1] === "") {
+            values.pop();
+          }
+        }
+
         output.push(`${segmentId}*${values.join("*")}~`);
       }
 
