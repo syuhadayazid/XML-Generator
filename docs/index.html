@@ -407,6 +407,7 @@
     const warningList = document.getElementById("warningList");
     const toast = document.getElementById("toast");
     const valueColumnField = valueColumnName ? valueColumnName.closest(".field") : null;
+    const sefSourceField = sefSource ? sefSource.closest(".field") : null;
     const sefFileField = sefFile ? sefFile.closest(".field") : null;
 
     let generatedXml = "";
@@ -440,6 +441,12 @@
       if (valueColumnField) {
         valueColumnField.style.opacity = useEdiMode ? "1" : "0.6";
       }
+      if (sefSourceField) {
+        sefSourceField.style.display = useEdiMode ? "flex" : "none";
+      }
+      if (sefFileField) {
+        sefFileField.style.display = useEdiMode ? "flex" : "none";
+      }
 
       // Keep UI defaults aligned with PowerShell script defaults in EDI mode.
       if (useEdiMode) {
@@ -458,7 +465,9 @@
         sefFile.disabled = !useCustomSef;
       }
       if (sefFileField) {
-        sefFileField.style.opacity = useCustomSef ? "1" : "0.6";
+        const selectedOutputMode = (outputMode && outputMode.value) ? outputMode.value : "xml";
+        const useEdiMode = selectedOutputMode === "edi";
+        sefFileField.style.opacity = (useEdiMode && useCustomSef) ? "1" : "0.6";
       }
     }
 
