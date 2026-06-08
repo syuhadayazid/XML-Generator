@@ -1398,6 +1398,12 @@ function Build-SampleEdiFromPathLines {
                 $values.Add($formattedValue)
             } else {
                 if ($hasExplicitPath) {
+                    if ($segmentId -eq 'PID') {
+                        # For explicit PID no-mapping rows, keep element blank instead of SAMPLE_VALUE.
+                        $values.Add('')
+                        continue
+                    }
+
                     $sampleValue = Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet
                     $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue
                     if ($segmentId -eq 'ISA' -and $pos -eq 13) {

@@ -1238,6 +1238,11 @@
           const hasExplicitPath = positionMap.has(pos);
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
           if (!explicitValue && hasExplicitPath) {
+            if (segmentId === "PID") {
+              values.push("");
+              continue;
+            }
+
             const rawValue = getSampleEdiElementValue(segmentId, pos, transactionSet);
             const formattedValue = formatEdiElementValue(segmentId, pos, rawValue);
             if (segmentId === "ISA" && pos === 13) {
