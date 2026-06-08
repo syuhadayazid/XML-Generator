@@ -2109,6 +2109,8 @@
         const sefSchemaModel = await loadSefSchemaModel();
         const lines = await extractLinesFromFile(file, selectedOutputMode);
         const result = createXmlFromLines(lines);
+        const validationWarnings = [];
+        const validationErrors = [];
         generatedXml = result.xml;
         const rootLocalName = getLocalName(result.rootName);
         const hasX12Root = rootLocalName === "X12";
@@ -2116,16 +2118,13 @@
         if (hasX12Root) {
           const ediBuild = buildSampleEdiFromPathLines(lines, detectedTransactionSet, ediPathValueMap);
           generatedEdi = (ediBuild && typeof ediBuild === "object") ? (ediBuild.ediText || "") : String(ediBuild || "");
-          if (ediBuild && Array.isArray(ediBuild.warnings) && ediBuild.warnings.length) {
-            result.malformed.push(...ediBuild.warnings);
-          }
 
           const validation = validateEdiAgainstSef(generatedEdi, sefSchemaModel);
           if (validation.errors.length) {
-            result.malformed.push(...validation.errors.map((message) => `ERROR: ${message}`));
+            validationErrors.push(...validation.errors.map((message) => `ERROR: ${message}`));
           }
           if (validation.warnings.length) {
-            result.malformed.push(...validation.warnings.map((message) => `WARNING: ${message}`));
+            validationWarnings.push(...validation.warnings.map((message) => `WARNING: ${message}`));
           }
         }
 
@@ -2151,11 +2150,14 @@
         if (selectedOutputMode === "edi" && detectedTransactionSet && detectedTransactionSet !== "861") {
           message += ` Note: EDI generation is currently limited to transaction set 861. Detected hint '${detectedTransactionSet}' was ignored.`;
         }
-        if (result.malformed.length) {
-          message += ` Warnings (${result.malformed.length}): ${summarizeWarnings(result.malformed, 3)}`;
+        if (validationErrors.length) {
+          message += ` Validation Errors (${validationErrors.length}): ${summarizeWarnings(validationErrors, 3)}`;
         }
-        renderWarnings(result.malformed);
-        setStatus(message, result.malformed.length > 0);
+        if (validationWarnings.length) {
+          message += ` Validation Warnings (${validationWarnings.length}): ${summarizeWarnings(validationWarnings, 3)}`;
+        }
+        renderWarnings(validationWarnings);
+        setStatus(message, validationWarnings.length > 0 || validationErrors.length > 0);
       } catch (error) {
         xmlPreview.textContent = "Generation failed.";
         renderWarnings([error.message]);
