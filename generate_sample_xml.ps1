@@ -1335,6 +1335,18 @@ function Build-SampleEdiFromPathLines {
 
     $segmentLines = New-Object System.Collections.Generic.List[string]
     $isaControlNumber = $null
+    $generationWarnings = New-Object System.Collections.Generic.List[string]
+
+    $addGenerationWarning = {
+        param([string]$message)
+        if ([string]::IsNullOrWhiteSpace($message)) {
+            return
+        }
+
+        if (-not $generationWarnings.Contains($message)) {
+            $generationWarnings.Add($message)
+        }
+    }
 
     $emitSegment = {
         param([string]$segmentId, [hashtable]$sourceMap, [int]$forceElementCount)
@@ -1394,20 +1406,26 @@ function Build-SampleEdiFromPathLines {
             if (-not [string]::IsNullOrWhiteSpace($explicitValue)) {
                 if ($segmentId -eq 'GS' -and $pos -eq 2 -and $explicitValue -eq 'SAMPLE_VALUE' -and -not [string]::IsNullOrWhiteSpace($gsSenderFallback)) {
                     $values.Add($gsSenderFallback)
+                    & $addGenerationWarning "GS02 used ISA06 fallback because input mapped to placeholder text."
                     continue
                 }
 
                 if ($segmentId -eq 'GS' -and $pos -eq 3 -and $explicitValue -eq 'SAMPLE_VALUE' -and -not [string]::IsNullOrWhiteSpace($gsReceiverFallback)) {
                     $values.Add($gsReceiverFallback)
+                    & $addGenerationWarning "GS03 used ISA08 fallback because input mapped to placeholder text."
                     continue
                 }
 
                 if ($explicitValue -eq $NoMappingToken) {
                     $values.Add('')
+                    & $addGenerationWarning "$segmentId$('{0:D2}' -f $pos) was explicitly marked as no mapping and left blank."
                     continue
                 }
 
                 $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $explicitValue
+                if ($segmentId -eq 'ISA' -and ($pos -eq 6 -or $pos -eq 8 -or $pos -eq 9 -or $pos -eq 10 -or $pos -eq 13) -and $formattedValue -ne $explicitValue) {
+                    & $addGenerationWarning "$segmentId$('{0:D2}' -f $pos) value was auto-adjusted to required X12 length/format."
+                }
                 if ($segmentId -eq 'ISA' -and $pos -eq 13) {
                     $isaControlNumber = $formattedValue
                 }
@@ -1518,7 +1536,10 @@ function Build-SampleEdiFromPathLines {
     $segmentLines.Add("GE*1*$interchangeControlNumber~")
     $segmentLines.Add("IEA*1*$interchangeControlNumber~")
 
-    return ($segmentLines -join [Environment]::NewLine)
+    return [pscustomobject]@{
+        EdiText = ($segmentLines -join [Environment]::NewLine)
+        Warnings = @($generationWarnings)
+    }
 }
 
 function New-ElementFromSpec {
@@ -1921,10 +1942,15 @@ $outputFormat = 'XML'
 $finalOutputPath = $outputPath
 $isX12Root = ($root.Name -eq 'X12' -or $root.LocalName -eq 'X12')
 $ediValidation = $null
+$ediGenerationWarnings = @()
 
 if ($isX12Root) {
     $transactionSetHint = Get-TransactionSetHintFromInputPath -path $inputPath
-    $ediText = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint -pathValueMap $pathValueMap
+    $ediBuildResult = Build-SampleEdiFromPathLines -pathLines $lines -transactionSetHint $transactionSetHint -pathValueMap $pathValueMap
+    $ediText = if ($ediBuildResult -and $ediBuildResult.PSObject.Properties.Name -contains 'EdiText') { [string]$ediBuildResult.EdiText } else { [string]$ediBuildResult }
+    if ($ediBuildResult -and $ediBuildResult.PSObject.Properties.Name -contains 'Warnings') {
+        $ediGenerationWarnings = @($ediBuildResult.Warnings)
+    }
     if (-not [string]::IsNullOrWhiteSpace($ediText)) {
         $ediText | Out-File -FilePath $ediOutputPath -Encoding ascii
         $sefSchema = Get-SefSchemaModel -schemaPath $sefSchemaPath
@@ -1947,6 +1973,12 @@ Write-Output "Lines Read: $($lines.Count)"
 Write-Output "Lines Used: $used"
 Write-Output "Lines Skipped: $skipped"
 Write-Output "Malformed Lines: $($malformed.Count)"
+if ($outputFormat -eq 'EDI') {
+    Write-Output "Generation Warnings: $($ediGenerationWarnings.Count)"
+    foreach ($message in $ediGenerationWarnings) {
+        Write-Output "GEN-WARNING: $message"
+    }
+}
 if ($ediValidation) {
     Write-Output "Validation Errors: $($ediValidation.Errors.Count)"
     Write-Output "Validation Warnings: $($ediValidation.Warnings.Count)"

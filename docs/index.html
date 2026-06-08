@@ -1056,6 +1056,15 @@
       const occurrenceCounters = new Map();
       const latestOccurrenceByBase = new Map();
       const pathValueCursor = new Map();
+      const generationWarnings = [];
+      const addGenerationWarning = (message) => {
+        if (!message) {
+          return;
+        }
+        if (!generationWarnings.includes(message)) {
+          generationWarnings.push(message);
+        }
+      };
       let effectiveTransactionSetHint = String(transactionSetHint ?? "");
 
       lines.forEach((line) => {
@@ -1252,16 +1261,19 @@
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
           if (segmentId === "GS" && pos === 2 && explicitValue === "SAMPLE_VALUE" && gsSenderFallback) {
             values.push(gsSenderFallback);
+            addGenerationWarning("GS02 used ISA06 fallback because input mapped to placeholder text.");
             continue;
           }
 
           if (segmentId === "GS" && pos === 3 && explicitValue === "SAMPLE_VALUE" && gsReceiverFallback) {
             values.push(gsReceiverFallback);
+            addGenerationWarning("GS03 used ISA08 fallback because input mapped to placeholder text.");
             continue;
           }
 
           if (explicitValue === NO_MAPPING_TOKEN) {
             values.push("");
+            addGenerationWarning(`${segmentId}${String(pos).padStart(2, "0")} was explicitly marked as no mapping and left blank.`);
             continue;
           }
 
@@ -1304,6 +1316,9 @@
 
           const rawValue = explicitValue || getSampleEdiElementValue(segmentId, pos, transactionSet);
           const formattedValue = formatEdiElementValue(segmentId, pos, rawValue);
+          if (explicitValue && segmentId === "ISA" && [6, 8, 9, 10, 13].includes(pos) && formattedValue !== explicitValue) {
+            addGenerationWarning(`${segmentId}${String(pos).padStart(2, "0")} value was auto-adjusted to required X12 length/format.`);
+          }
           if (segmentId === "ISA" && pos === 13) {
             isaControlNumber = formattedValue;
           }
@@ -1339,7 +1354,10 @@
       output.push(`GE*1*${interchangeControlNumber}~`);
       output.push(`IEA*1*${interchangeControlNumber}~`);
 
-      return output.join("\n");
+      return {
+        ediText: output.join("\n"),
+        warnings: generationWarnings
+      };
     }
 
     function splitXmlPathSegments(path) {
@@ -1710,7 +1728,11 @@
         const hasX12Root = rootLocalName === "X12";
 
         if (hasX12Root) {
-          generatedEdi = buildSampleEdiFromPathLines(lines, detectedTransactionSet, ediPathValueMap);
+          const ediBuild = buildSampleEdiFromPathLines(lines, detectedTransactionSet, ediPathValueMap);
+          generatedEdi = (ediBuild && typeof ediBuild === "object") ? (ediBuild.ediText || "") : String(ediBuild || "");
+          if (ediBuild && Array.isArray(ediBuild.warnings) && ediBuild.warnings.length) {
+            result.malformed.push(...ediBuild.warnings);
+          }
         }
 
         if (selectedOutputMode === "edi") {
