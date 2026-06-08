@@ -2004,15 +2004,7 @@
         const wantedValue = useEdiValueMapping ? normalizeHeader(effectiveValueColumn) : "";
         const columnNameProvided = Boolean(wanted);
 
-        if (columnNameProvided) {
-          const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
-          if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
-            setStatus(`Detected worksheet '${embeddedHeaderMatch.sheetName}', header row ${embeddedHeaderMatch.rowNumber}, column ${embeddedHeaderMatch.columnIndex + 1}.`);
-            return maybeConvertDetectedEdi(embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${embeddedHeaderMatch.sheetName}'`);
-          }
-        }
-
-        const candidateSheets = selectedSheet ? [sheetName, ...workbook.SheetNames.filter((name) => name !== sheetName)] : workbook.SheetNames;
+        const candidateSheets = [sheetName];
         for (const currentSheetName of candidateSheets) {
           const sheet = workbook.Sheets[currentSheetName];
           if (!sheet) {
@@ -2034,9 +2026,14 @@
             const resolvedHeader = headers.find((header) => normalizeHeader(header) === wanted);
             if (resolvedHeader) {
               setStatus(`Detected worksheet '${currentSheetName}' with column '${resolvedHeader}'.`);
-              const resolvedValueHeader = useEdiValueMapping && wantedValue
+              let resolvedValueHeader = useEdiValueMapping && wantedValue
                 ? headers.find((header) => normalizeHeader(header) === wantedValue)
                 : null;
+
+              if (useEdiValueMapping && !resolvedValueHeader) {
+                const valueHeaderCandidates = ["value", "mapped value", "output value", "target value", "populate value", "edi value"];
+                resolvedValueHeader = headers.find((header) => valueHeaderCandidates.includes(normalizeHeader(header)));
+              }
 
               const pathLines = rows
                 .map((row) => String(row[resolvedHeader] ?? "").trim())
@@ -2061,6 +2058,14 @@
           if (noHeaderMatch && noHeaderMatch.pathLikeCount > 0) {
             setStatus(`Detected path-like XLSX column ${noHeaderMatch.columnIndex + 1} in worksheet '${currentSheetName}'.`);
             return maybeConvertDetectedEdi(noHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${currentSheetName}'`);
+          }
+        }
+
+        if (columnNameProvided) {
+          const embeddedHeaderMatch = detectEmbeddedHeaderLines(workbook, wanted, selectedSheet);
+          if (embeddedHeaderMatch && embeddedHeaderMatch.pathLikeCount > 0) {
+            setStatus(`Detected embedded header '${effectivePathColumn}' in worksheet '${embeddedHeaderMatch.sheetName}', row ${embeddedHeaderMatch.rowNumber}.`);
+            return maybeConvertDetectedEdi(embeddedHeaderMatch.values.filter((value) => isPathLikeValue(value)), `worksheet '${embeddedHeaderMatch.sheetName}'`);
           }
         }
 
