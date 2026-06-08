@@ -1385,7 +1385,8 @@ function Build-SampleEdiFromPathLines {
 
             $explicitValue = $null
             $posKey = [string]$pos
-            if ($elementMap.Contains($posKey)) {
+            $hasExplicitPath = $elementMap.Contains($posKey)
+            if ($hasExplicitPath) {
                 $explicitValue = [string]$elementMap[$posKey]
             }
 
@@ -1396,6 +1397,16 @@ function Build-SampleEdiFromPathLines {
                 }
                 $values.Add($formattedValue)
             } else {
+                if ($hasExplicitPath) {
+                    $sampleValue = Get-SampleEdiElementValue -segmentId $segmentId -position $pos -transactionSet $transactionSet
+                    $formattedValue = Format-EdiElementValue -segmentId $segmentId -position $pos -value $sampleValue
+                    if ($segmentId -eq 'ISA' -and $pos -eq 13) {
+                        $isaControlNumber = $formattedValue
+                    }
+                    $values.Add($formattedValue)
+                    continue
+                }
+
                 $hasLowerPresent = $false
                 $hasHigherPresent = $false
                 foreach ($presentPos in $presentPositions) {

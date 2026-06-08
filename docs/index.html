@@ -1235,7 +1235,18 @@
             continue;
           }
 
+          const hasExplicitPath = positionMap.has(pos);
           const explicitValue = String(positionMap.get(pos) ?? "").trim();
+          if (!explicitValue && hasExplicitPath) {
+            const rawValue = getSampleEdiElementValue(segmentId, pos, transactionSet);
+            const formattedValue = formatEdiElementValue(segmentId, pos, rawValue);
+            if (segmentId === "ISA" && pos === 13) {
+              isaControlNumber = formattedValue;
+            }
+            values.push(formattedValue);
+            continue;
+          }
+
           const hasLowerPresent = presentPositions.some((presentPos) => presentPos < pos);
           const hasHigherPresent = presentPositions.some((presentPos) => presentPos > pos);
           if (!explicitValue && !controlSegments.has(segmentId) && hasLowerPresent && hasHigherPresent) {
