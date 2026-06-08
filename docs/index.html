@@ -404,6 +404,8 @@
     let ediPathValueMap = new Map();
     const NO_MAPPING_TOKEN = "__NO_MAPPING__";
     const DEFAULT_SEF_PATH = "./X12-861-4010.sef";
+    const DEFAULT_EDI_PATH_COLUMN = "EDI path";
+    const DEFAULT_EDI_VALUE_COLUMN = "Value";
     let selectedFile = null;
     let toastTimer = null;
 
@@ -426,6 +428,16 @@
       }
       if (valueColumnField) {
         valueColumnField.style.opacity = useEdiMode ? "1" : "0.6";
+      }
+
+      // Keep UI defaults aligned with PowerShell script defaults in EDI mode.
+      if (useEdiMode) {
+        if (columnName && !String(columnName.value || "").trim()) {
+          columnName.value = DEFAULT_EDI_PATH_COLUMN;
+        }
+        if (valueColumnName && !String(valueColumnName.value || "").trim()) {
+          valueColumnName.value = DEFAULT_EDI_VALUE_COLUMN;
+        }
       }
     }
 
@@ -1982,8 +1994,14 @@
           throw new Error(`Worksheet '${sheetName}' was not found.`);
         }
 
-        const wanted = normalizeHeader(columnName.value);
-        const wantedValue = useEdiValueMapping ? normalizeHeader(valueColumnName.value) : "";
+        const effectivePathColumn = useEdiValueMapping
+          ? (String(columnName.value || "").trim() || DEFAULT_EDI_PATH_COLUMN)
+          : String(columnName.value || "").trim();
+        const effectiveValueColumn = useEdiValueMapping
+          ? (String(valueColumnName.value || "").trim() || DEFAULT_EDI_VALUE_COLUMN)
+          : String(valueColumnName.value || "").trim();
+        const wanted = normalizeHeader(effectivePathColumn);
+        const wantedValue = useEdiValueMapping ? normalizeHeader(effectiveValueColumn) : "";
         const columnNameProvided = Boolean(wanted);
 
         if (columnNameProvided) {
@@ -2032,7 +2050,7 @@
                   addPathValueMapping(path, mappedValue);
                 });
               } else if (useEdiValueMapping && wantedValue) {
-                setStatus(`Path column found but value column '${valueColumnName.value}' was not found. Falling back to sample values for missing EDI elements.`);
+                setStatus(`Path column found but value column '${effectiveValueColumn}' was not found. Falling back to sample values for missing EDI elements.`);
               }
 
               return maybeConvertDetectedEdi(pathLines, `worksheet '${currentSheetName}' column '${resolvedHeader}'`);
@@ -2056,7 +2074,7 @@
           throw new Error(`Could not auto-detect a path column. Available columns: ${headers.join(", ")}`);
         }
 
-        throw new Error(`Column '${columnName.value}' was not found. Available columns: ${headers.join(", ")}`);
+        throw new Error(`Column '${effectivePathColumn}' was not found. Available columns: ${headers.join(", ")}`);
       }
 
       throw new Error("Unsupported file type. Please upload a .txt, .xlsx, .edi, or .x12 file.");
