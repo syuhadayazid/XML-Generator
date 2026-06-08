@@ -324,6 +324,7 @@
             <select id="sefSource">
               <option value="861">X12-861-4010</option>
               <option value="214">X12-214-4010</option>
+              <option value="856">X12-856-4010</option>
               <option value="other">Other (upload your own .sef)</option>
             </select>
           </div>
@@ -425,7 +426,8 @@
     const NO_MAPPING_TOKEN = "__NO_MAPPING__";
     const DEFAULT_SEF_PATHS = {
       "861": "./X12-861-4010.sef",
-      "214": "./X12-214-4010.sef"
+      "214": "./X12-214-4010.sef",
+      "856": "./X12-856-4010.sef"
     };
     const DEFAULT_EDI_PATH_COLUMN = "EDI path";
     const DEFAULT_EDI_VALUE_COLUMN = "Value";
@@ -473,7 +475,7 @@
 
     function updateSefSourceUi() {
       const selectedSefSource = (sefSource && sefSource.value) ? sefSource.value : "861";
-      const useCustomSef = (selectedSefSource === "other" || selectedSefSource === "214");
+      const useCustomSef = (selectedSefSource === "other");
       if (sefFile) {
         sefFile.disabled = !useCustomSef;
       }
@@ -1037,6 +1039,9 @@
               if (transactionSet === "214") {
                 return "QM";
               }
+              if (transactionSet === "856") {
+                return "SH";
+              }
               return "OW";
             case 2: return "SENDER";
             case 3: return "RECEIVER";
@@ -1345,7 +1350,7 @@
 
     async function loadSefSchemaModel(transactionSetId) {
       const selectedSefSource = (sefSource && sefSource.value) ? sefSource.value : transactionSetId;
-      if (selectedSefSource === "other" || selectedSefSource === "214") {
+      if (selectedSefSource === "other") {
         const file = sefFile && sefFile.files && sefFile.files[0] ? sefFile.files[0] : null;
         if (!file) {
           return null;
@@ -1667,7 +1672,9 @@
       const transactionSet = resolveTransactionSetId(effectiveTransactionSetHint);
 
       if (!occurrenceOrder.length) {
-        const fallbackSegmentId = transactionSet === "214" ? "B10" : "BRA";
+        const fallbackSegmentId = transactionSet === "214"
+          ? "B10"
+          : (transactionSet === "856" ? "BSN" : "BRA");
         const fallbackKey = `X12/${fallbackSegmentId}`;
         segmentOccurrences.set(fallbackKey, {
           segmentId: fallbackSegmentId,

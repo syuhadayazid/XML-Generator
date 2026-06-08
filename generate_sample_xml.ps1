@@ -747,6 +747,7 @@ function Get-SampleEdiElementValue {
                 1 {
                     switch ($transactionSet) {
                         '214' { return 'QM' }
+                        '856' { return 'SH' }
                         default { return 'OW' }
                     }
                 }
@@ -900,6 +901,7 @@ function Resolve-SefSchemaPath {
     $preferredDir = if ([string]::IsNullOrWhiteSpace($preferredPath)) { $null } else { [System.IO.Path]::GetDirectoryName($preferredPath) }
     $candidatePaths = @(
         (if ($preferredDir) { Join-Path $preferredDir ("X12-$transactionSetId-4010.sef") } else { $null }),
+        (Join-Path 'C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12\SEF' ("X12-$transactionSetId-4010.sef")),
         (Join-Path 'C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files\X12' ("X12-$transactionSetId-4010.sef")),
         (Join-Path 'C:\Users\syuhada.yazid\OneDrive - WiseTech Global\Desktop\sample files' ("X12-$transactionSetId-4010.sef"))
     )
@@ -1454,7 +1456,11 @@ function Build-SampleEdiFromPathLines {
     $transactionSet = Resolve-TransactionSetId -transactionSetHint $effectiveTransactionSetHint
 
     if ($occurrenceOrder.Count -eq 0) {
-        $fallbackSegmentId = if ($transactionSet -eq '214') { 'B10' } else { 'BRA' }
+        $fallbackSegmentId = switch ($transactionSet) {
+            '214' { 'B10' }
+            '856' { 'BSN' }
+            default { 'BRA' }
+        }
         $fallbackKey = "X12/$fallbackSegmentId"
         $segmentOccurrences[$fallbackKey] = [ordered]@{
             SegmentId = $fallbackSegmentId
