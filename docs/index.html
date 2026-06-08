@@ -1021,6 +1021,23 @@
         return String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
       }
 
+      if (segmentId === "ISA" && position === 13) {
+        const digits = text.replace(/\D/g, "");
+        if (!digits) {
+          return "000000001";
+        }
+
+        if (digits.length < 9) {
+          return digits.padStart(9, "0");
+        }
+
+        if (digits.length > 9) {
+          return digits.slice(-9);
+        }
+
+        return digits;
+      }
+
       return text;
     }
 

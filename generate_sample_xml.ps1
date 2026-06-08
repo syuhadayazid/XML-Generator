@@ -826,6 +826,23 @@ function Format-EdiElementValue {
         return (Get-Date -Format 'HHmm')
     }
 
+    if ($segmentId -eq 'ISA' -and $position -eq 13) {
+        $digits = ($text -replace '\D', '')
+        if ([string]::IsNullOrWhiteSpace($digits)) {
+            return '000000001'
+        }
+
+        if ($digits.Length -lt 9) {
+            return $digits.PadLeft(9, '0')
+        }
+
+        if ($digits.Length -gt 9) {
+            return $digits.Substring($digits.Length - 9)
+        }
+
+        return $digits
+    }
+
     return $text
 }
 
