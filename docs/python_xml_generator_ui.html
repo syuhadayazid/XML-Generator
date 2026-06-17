@@ -611,7 +611,8 @@
         const arrayBuffer = await file.arrayBuffer();
         workbook = XLSX.read(arrayBuffer, { type: "array" });
         rebuildSheetOptions();
-        setStatus(`Loaded workbook: ${file.name}`, "good");
+         const sheetCount = workbook.SheetNames.length;
+         setStatus(`✓ Loaded: ${file.name} (${sheetCount} sheet${sheetCount !== 1 ? "s" : ""})`, "good");
       } catch (err) {
         workbook = null;
         rebuildSheetOptions();
@@ -628,15 +629,11 @@
         if (!ws) throw new Error(`Worksheet not found: ${selected}`);
 
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
-        const parsed = parseRowsFromSheet(rows);
-
-        if (!parsed.paths.length) {
-          throw new Error("No XML paths were found in the selected worksheet.");
-        }
-
-        const tree = buildTreeFromPaths(parsed.paths, sampleOnly.checked);
-        if (!tree) throw new Error("Unable to build XML from the selected rows.");
-
+         if (!rows.length) throw new Error("Worksheet is empty.");
+         const parsed = parseRowsFromSheet(rows);
+ 
+         if (!parsed.paths.length) {
+           throw new Error(`No XML paths found. Scanned ${rows.length} rows. Detected column: ${indexToColRef(parsed.pathCol)}. Try selecting a different worksheet.`);
         generatedXml = `<?xml version="1.0" encoding="utf-8"?>\n${serializeXml(tree)}`;
         xmlOut.textContent = generatedXml;
         metaRows.textContent = `Rows processed: ${parsed.paths.length}`;
@@ -649,12 +646,14 @@
       } catch (err) {
         generatedXml = "";
         downloadBtn.disabled = true;
-        copyBtn.disabled = true;
-        setStatus(err.message || String(err), "warn");
-      }
-    });
-
-    downloadBtn.addEventListener("click", () => {
+         setStatus(`✓ Generated XML with ${parsed.paths.length} paths from column ${indexToColRef(parsed.pathCol)}`, "good");
+       } catch (err) {
+         generatedXml = "";
+         downloadBtn.disabled = true;
+         copyBtn.disabled = true;
+         const msg = err.message || String(err);
+         console.error("Generation error:", msg);
+         setStatus(`⚠ ${msg}`, "warn");
       if (!generatedXml) return;
       const fileName = (downloadName.value || "generated_sample.xml").trim();
       const blob = new Blob([generatedXml], { type: "application/xml" });
