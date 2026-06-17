@@ -286,6 +286,11 @@
           </div>
 
           <div id="statusBox" class="status">Select an Excel file to begin.</div>
+
+          <div id="debugBox" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; font-family: monospace; display: none;">
+            <strong>Debug Info:</strong>
+            <div id="debugText" style="margin-top: 5px; white-space: pre-wrap; color: #333;"></div>
+          </div>
         </section>
 
         <section class="panel">
@@ -318,6 +323,8 @@
     const metaRows = document.getElementById("metaRows");
     const metaSheet = document.getElementById("metaSheet");
     const metaColumn = document.getElementById("metaColumn");
+    const debugBox = document.getElementById("debugBox");
+    const debugText = document.getElementById("debugText");
 
     let workbook = null;
     let generatedXml = "";
@@ -325,6 +332,11 @@
     function setStatus(message, tone = "") {
       statusBox.className = `status${tone ? ` ${tone}` : ""}`;
       statusBox.textContent = message;
+    }
+
+    function setDebug(message) {
+      debugText.textContent = message;
+      debugBox.style.display = "block";
     }
 
     function escapeXml(value) {
@@ -605,6 +617,7 @@
         workbook = null;
         rebuildSheetOptions();
         setStatus("Select an Excel file to begin.");
+        debugBox.style.display = "none";
         return;
       }
 
@@ -612,12 +625,15 @@
         const arrayBuffer = await file.arrayBuffer();
         workbook = XLSX.read(arrayBuffer, { type: "array" });
         rebuildSheetOptions();
-         const sheetCount = workbook.SheetNames.length;
-         setStatus(`✓ Loaded: ${file.name} (${sheetCount} sheet${sheetCount !== 1 ? "s" : ""})`, "good");
+        const sheetCount = workbook.SheetNames.length;
+        const sheetList = workbook.SheetNames.join(", ");
+        setStatus(`✓ Loaded: ${file.name} (${sheetCount} sheet${sheetCount !== 1 ? "s" : ""})`, "good");
+        setDebug(`File loaded.\nSheets found: ${sheetList}`);
       } catch (err) {
         workbook = null;
         rebuildSheetOptions();
         setStatus(`Failed to read workbook: ${err.message}`, "warn");
+        setDebug(`Error: ${err.message}`);
       }
     });
 
@@ -630,12 +646,11 @@
         if (!ws) throw new Error(`Worksheet not found: ${selected}`);
 
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
-        const debugMsg = `Sheet "${selected}" has ${rows.length} rows (ref: ${ws['!ref'] || 'none'})`;
-        console.log(debugMsg);
-        console.log("First few rows:", rows.slice(0, 3));
+        const debugInfo = `Worksheet: "${selected}"\nRows found: ${rows.length}\nSheet range: ${ws['!ref'] || 'none'}\nFirst row: ${JSON.stringify(rows[0] || [])}`;
+        setDebug(debugInfo);
         
         if (!rows.length) {
-          throw new Error(`Worksheet "${selected}" is empty. Debug: ${debugMsg}. File may not have data in this sheet.`);
+          throw new Error(`Worksheet "${selected}" is empty.`);
         }
         
         const parsed = parseRowsFromSheet(rows);
