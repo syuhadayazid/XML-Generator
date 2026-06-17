@@ -458,6 +458,40 @@
       return best.col;
     }
 
+    function scoreWorksheetForXml(rows) {
+      if (!rows || !rows.length) return null;
+
+      const hdrRow = headerRowInfo(rows);
+      let pathCol = detectXmlPathColumn(rows, hdrRow + 1);
+      if (pathCol === null) pathCol = detectXmlPathColumn(rows, 0);
+      if (pathCol === null) return null;
+
+      let paths = 0;
+      for (let r = hdrRow + 1; r < rows.length; r++) {
+        const value = rows[r][pathCol];
+        if (value === null || value === undefined) continue;
+        if (looksLikeXmlPath(String(value).trim())) paths += 1;
+      }
+
+      return { pathCol, paths, hdrRow };
+    }
+
+    function detectBestWorksheet(workbookObj) {
+      let best = null;
+      for (const name of workbookObj.SheetNames) {
+        const ws = workbookObj.Sheets[name];
+        if (!ws || !ws["!ref"]) continue;
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
+        const score = scoreWorksheetForXml(rows);
+        if (!score || score.paths < 1) continue;
+
+        if (!best || score.paths > best.paths) {
+          best = { name, ...score };
+        }
+      }
+      return best;
+    }
+
     function headerRowInfo(rows) {
       const targetHeader = "element xpath or segment, loop, element identifier";
       for (let i = 0; i < Math.min(50, rows.length); i++) {
@@ -641,7 +675,18 @@
       try {
         if (!workbook) throw new Error("Please load an .xlsx file first.");
 
-        const selected = sheetName.value || workbook.SheetNames[0];
+        let selected = sheetName.value;
+        if (!selected) {
+          const detected = detectBestWorksheet(workbook);
+          if (detected) {
+            selected = detected.name;
+            sheetName.value = selected;
+            setStatus(`Auto-selected worksheet: ${selected}`, "good");
+          } else {
+            selected = workbook.SheetNames[0];
+          }
+        }
+
         const ws = workbook.Sheets[selected];
         if (!ws) throw new Error(`Worksheet not found: ${selected}`);
 
