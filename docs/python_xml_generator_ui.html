@@ -441,7 +441,8 @@
         }
       }
       if (!best) return null;
-      if (best.hits < 3 || best.ratio < 0.4) return null;
+      // Relaxed thresholds: at least 1 hit and 30% ratio (was 3 hits and 40% ratio)
+      if (best.hits < 1 || best.ratio < 0.3) return null;
       return best.col;
     }
 
@@ -566,7 +567,7 @@
       }
 
       if (pathCol === null) {
-        throw new Error("Could not auto detect an XML path column.");
+        throw new Error("Could not auto detect an XML path column. Disable auto-detect and manually enter B or 2 for the column.");
       }
 
       const paths = [];
