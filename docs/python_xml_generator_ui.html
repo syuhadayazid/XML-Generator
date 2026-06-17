@@ -630,9 +630,13 @@
         if (!ws) throw new Error(`Worksheet not found: ${selected}`);
 
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
-        console.log(`Sheet "${selected}" parsed: ${rows.length} rows, columns: ${ws['!ref']}`);
+        const debugMsg = `Sheet "${selected}" has ${rows.length} rows (ref: ${ws['!ref'] || 'none'})`;
+        console.log(debugMsg);
         console.log("First few rows:", rows.slice(0, 3));
-        if (!rows.length) throw new Error(`Worksheet "${selected}" is empty. Sheet reference: ${ws['!ref']}.`);
+        
+        if (!rows.length) {
+          throw new Error(`Worksheet "${selected}" is empty. Debug: ${debugMsg}. File may not have data in this sheet.`);
+        }
         
         const parsed = parseRowsFromSheet(rows);
         if (!parsed.paths.length) {
