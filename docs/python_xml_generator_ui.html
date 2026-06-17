@@ -630,7 +630,9 @@
         if (!ws) throw new Error(`Worksheet not found: ${selected}`);
 
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
-        if (!rows.length) throw new Error("Worksheet is empty.");
+        console.log(`Sheet "${selected}" parsed: ${rows.length} rows, columns: ${ws['!ref']}`);
+        console.log("First few rows:", rows.slice(0, 3));
+        if (!rows.length) throw new Error(`Worksheet "${selected}" is empty. Sheet reference: ${ws['!ref']}.`);
         
         const parsed = parseRowsFromSheet(rows);
         if (!parsed.paths.length) {
