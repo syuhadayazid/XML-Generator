@@ -1,0 +1,154 @@
+<?xml version='1.0' encoding='utf-8'?>
+<px:NotifyShipment>
+  <px:DataArea>
+    <px:Shipment>
+      <px:ShipmentHeader>
+        <px:DocumentDateTime>20260618</px:DocumentDateTime>
+        <px:DocumentIDSet typeCode="TRANSPORT_ORDER_NO">
+          <px:ID typeCode="TRANSPORT_ORDER_NO">If the source !="" map to Target</px:ID>
+        </px:DocumentIDSet>
+        <px:CarrierParty>
+          <px:ID typeCode="inttraCompanyID">If the source !="" map to Target</px:ID>
+        </px:CarrierParty>
+        <px:Party typeCode="Shipper">
+          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+          <px:Location>
+            <px:Address>
+              <px:AddressLine typeCode="Address1">If the source !="" map to Target<px:CityName>If the source !="" map to Target</px:CityName>
+                <px:CountrySubDivisionCode>If the source !="" map to Target</px:CountrySubDivisionCode>
+                <px:PostalCode>If the source !="" map to Target</px:PostalCode>
+                <px:CountryCode>If the source !="" map to Target</px:CountryCode>
+              </px:AddressLine>
+            </px:Address>
+          </px:Location>
+        </px:Party>
+        <px:Party typeCode="Party1">
+          <px:Name typeCode="PartyName">SAMPLE_VALUE</px:Name>
+          <px:ID typeCode="INTTRACompanyID">SAMPLE_VALUE</px:ID>
+          <px:Location>
+            <px:Address>
+              <px:AddressLine typeCode="Address1">If the source !="" map to Target<px:CityName>If the source !="" map to Target</px:CityName>
+                <px:CountrySubDivisionCode>If the source !="" map to Target</px:CountrySubDivisionCode>
+                <px:PostalCode>If the source !="" map to Target</px:PostalCode>
+                <px:CountryCode>If the source !="" map to Target</px:CountryCode>
+              </px:AddressLine>
+            </px:Address>
+          </px:Location>
+        </px:Party>
+        <px:Party typeCode="Party2">
+          <px:Name typeCode="PartyName">Not in IG</px:Name>
+          <px:ID typeCode="INTTRACompanyID">Not in IG</px:ID>
+          <px:Location>
+            <px:Address>
+              <px:AddressLine typeCode="Address1">Not in IG<px:CityName>Not in IG</px:CityName>
+                <px:CountrySubDivisionCode>Not in IG</px:CountrySubDivisionCode>
+                <px:PostalCode>Not in IG</px:PostalCode>
+                <px:CountryCode>Not in IG</px:CountryCode>
+              </px:AddressLine>
+            </px:Address>
+          </px:Location>
+        </px:Party>
+        <px:Party tyepCode="Provider">
+          <ID>3PL</ID>
+        </px:Party>
+        <px:DocumentReference typeCode="ContractNumber">
+          <ID>Not in IG</ID>
+        </px:DocumentReference>
+      </px:ShipmentHeader>
+      <px:ShipmentUnit>
+        <px:DocumentReference typeCode="BookingNumber">
+          <px:ID>If the source !="" map to Target</px:ID>
+          <px:Extension typeCode="CustomDetails">
+            <px:Number typeCode="CustomReferenceNumber">Not in IG</px:Number>
+          </px:Extension>
+          <px:Extension typeCode="SupplierExport">
+            <px:Text typeCode="SupplierExportDeclaration">Not in IG</px:Text>
+          </px:Extension>
+          <px:Extension typeCode="DutyTaxes">
+            <px:Text typeCode="DutyTaxes">Not in IG</px:Text>
+          </px:Extension>
+        </px:DocumentReference>
+        <px:DocumentReference typeCode="ShipmentID">
+          <px:ID>If the source !="" map to Target</px:ID>
+        </px:DocumentReference>
+        <px:TransportStep typeCode="MainStageTransportPlan">
+          <px:CarrierRouteReference>
+            <px:Extension typeCode="TransportDetails">
+              <px:ValueText typeCode="TransportMode">PARCEL</px:ValueText>
+            </px:Extension>
+          </px:CarrierRouteReference>
+          <px:Location typeCode="PlaceOfReceipt">
+            <px:ID typeCode="UNLocationCode">Not in IG</px:ID>
+            <px:Description typeCode="LocationLiteral">Not in IG</px:Description>
+            <px:Extension typeCode="PlaceOfReceiptDetails">
+              <px:DateTime typeCode="CarrierPickupDate">If the source !="" concat G6202 and G6204</px:DateTime>
+            </px:Extension>
+          </px:Location>
+          <px:Location typeCode="PlaceOfDelivery">
+            <px:ID typeCode="UNLocationCode">SAMPLE_VALUE</px:ID>
+            <px:Description typeCode="LocationLiteral">SAMPLE_VALUE</px:Description>
+            <px:Address typeCode="PlaceOfDeliveryLocation">
+              <px:CityName>SAMPLE_VALUE</px:CityName>
+              <px:CountrySubDivisionCode>SAMPLE_VALUE</px:CountrySubDivisionCode>
+              <px:CountryCode>SAMPLE_VALUE</px:CountryCode>
+              <px:PostalCode>SAMPLE_VALUE</px:PostalCode>
+            </px:Address>
+            <px:Extension typeCode="PlaceOfDeliveryDetails">
+              <px:DateTime typeCode="EstimatedDeliveryDate">if AT701 = "X2" Concat AT705 and AT706</px:DateTime>
+            </px:Extension>
+            <px:Coordinate typeCode="GeoCoordinate">
+              <px:LongitudeMeasure>Not in IG</px:LongitudeMeasure>
+              <px:LatitudeMeasure>Not in IG</px:LatitudeMeasure>
+            </px:Coordinate>
+          </px:Location>
+          <CarrierRouteReference>
+            <ID>Not in IG</ID>
+            <Extension typeCode="TransportDetails">
+              <Name typeCode="ConveyanceName">Not in IG</Name>
+              <Name typeCode="vehicleName">Not in IG</Name>
+            </Extension>
+          </CarrierRouteReference>
+        </px:TransportStep>
+        <px:Status>
+          <px:Code>Direct Mapping</px:Code>
+          <px:Extension typeCode="StatusEventDetails">
+            <px:DateTime typeCode="EventDate">Concat AT705 and AT706</px:DateTime>
+            <px:ValueText typeCode="EventDateFormat">yyyy-MM-dd</px:ValueText>
+            <px:ValueText typeCode="EventDateTimezone">Direct Mapping</px:ValueText>
+            <px:Text typeCode="EventPhase">ESTIMATED</px:Text>
+            <px:ValueText typeCode="EventUNLocationCode">Direct Mapping</px:ValueText>
+            <px:Name typeCode="EventCityName">Direct Mapping</px:Name>
+            <px:Name typeCode="EventSubdivisionName">Direct Mapping</px:Name>
+            <px:ValueText typeCode="EventCountryCode">Direct Mapping</px:ValueText>
+          </px:Extension>
+          <px:ReasonCode>Direct Mapping</px:ReasonCode>
+        </px:Status>
+        <px:ContainerID typeCode="ActualContainerNumber">Direct Mapping</px:ContainerID>
+        <px:CarrierParty>
+          <px:Name typeCode="CarrierName">DHLC</px:Name>
+        </px:CarrierParty>
+        <px:DocumentReference typeCode="MasterBOL">
+          <px:ID>Direct Mapping</px:ID>
+        </px:DocumentReference>
+        <px:TransportationTerm>
+          <px:ShipmentServiceLevelCode>Direct Mapping</px:ShipmentServiceLevelCode>
+        </px:TransportationTerm>
+        <px:Dimensions>
+          <px:GrossWeightMeasure>If the source !="" map to Target</px:GrossWeightMeasure>
+          <px:VolumeMeasure>Not in IG</px:VolumeMeasure>
+        </px:Dimensions>
+        <px:Quantity typeCode="CarrierPackages">If the source !="" map to Target</px:Quantity>
+        <px:Quantity typeCode="CLRQuantity">If the source !="" map to Target</px:Quantity>
+        <px:Note typeCode="ProofOfDeliveryVerification">Direct Mapping</px:Note>
+        <px:DocumentReference typeCode="CustomerReference">
+          <px:ID>SAMPLE_VALUE</px:ID>
+        </px:DocumentReference>
+        <px:DocumentReference typeCode="DepartmentNumberReference">
+          <px:ID>Not in IG</px:ID>
+        </px:DocumentReference>
+        <px:Note typeCode="Comment">Direct Mapping</px:Note>
+      </px:ShipmentUnit>
+    </px:Shipment>
+  </px:DataArea>
+</px:NotifyShipment>

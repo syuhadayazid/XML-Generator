@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python XML Generator UI</title>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --panel: #ffffff;
+      --ink: #24292f;
+      --muted: #57606a;
+      --line: #d0d7de;
+      --accent: #0969da;
+      --accent-strong: #1f6feb;
+      --success-bg: #dafbe1;
+      --success-ink: #116329;
+      --warn-bg: #fff8c5;
+      --warn-ink: #7d4e00;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(9, 105, 218, 0.08), transparent 35%),
+        linear-gradient(180deg, #ffffff, var(--bg));
+    }
+
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 16px 38px rgba(31, 111, 235, 0.08);
+      overflow: hidden;
+    }
+
+    .hero-top {
+      padding: 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(120deg, rgba(9, 105, 218, 0.06), rgba(9, 105, 218, 0));
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(1.45rem, 2.2vw, 1.9rem);
+      letter-spacing: -0.02em;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    input[type="file"],
+    input[type="text"],
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      color: var(--ink);
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+      font-weight: 600;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--accent-strong);
+      border-color: var(--line);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      padding: 10px;
+      background: #f6f8fa;
+      color: var(--muted);
+      min-height: 42px;
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+
+    .status.good {
+      background: var(--success-bg);
+      color: var(--success-ink);
+      border-color: rgba(17, 99, 41, 0.24);
+    }
+
+    .status.warn {
+      background: var(--warn-bg);
+      color: var(--warn-ink);
+      border-color: rgba(125, 78, 0, 0.24);
+    }
+
+    .out-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    pre {
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 260px;
+      max-height: 520px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .meta div {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #fff;
+    }
+  </style>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="hero-top">
+        <h1>Python XML Generator UI</h1>
+        <p class="sub">GitHub-style browser UI for generating sample XML from Excel mappings. This page runs fully in-browser.</p>
+        <div class="pill-row">
+          <span class="pill">Auto detect XML column</span>
+          <span class="pill">Sample value mode</span>
+          <span class="pill">No backend required</span>
+        </div>
+      </div>
+
+      <div class="content">
+        <section class="panel">
+          <h2>Input Settings</h2>
+          <div class="field">
+            <label for="xlsxFile">Excel file (.xlsx)</label>
+            <input id="xlsxFile" type="file" accept=".xlsx">
+          </div>
+
+          <div class="field">
+            <label for="sheetName">Worksheet</label>
+            <select id="sheetName">
+              <option value="">Auto (first worksheet)</option>
+            </select>
+          </div>
+
+          <div class="inline">
+            <input id="autoDetect" type="checkbox" checked>
+            <label for="autoDetect">Auto detect XML path column</label>
+          </div>
+
+          <div class="field">
+            <label for="manualCol">Manual path column (example: B)</label>
+            <input id="manualCol" type="text" placeholder="Used when auto detect is OFF">
+          </div>
+
+          <div class="inline">
+            <input id="sampleOnly" type="checkbox" checked>
+            <label for="sampleOnly">Force all values to SAMPLE_VALUE</label>
+          </div>
+
+          <div class="field">
+            <label for="downloadName">Output file name</label>
+            <input id="downloadName" type="text" value="generated_sample.xml">
+          </div>
+
+          <div class="buttons">
+            <button id="generateBtn" type="button">Generate XML</button>
+            <button id="downloadBtn" class="secondary" type="button" disabled>Download XML</button>
+            <button id="copyBtn" class="secondary" type="button" disabled>Copy XML</button>
+          </div>
+
+          <div id="statusBox" class="status">Select an Excel file to begin.</div>
+        </section>
+
+        <section class="panel">
+          <h2>Output</h2>
+          <div class="meta">
+            <div id="metaRows">Rows processed: -</div>
+            <div id="metaSheet">Worksheet: -</div>
+            <div id="metaColumn">Path column: -</div>
+          </div>
+          <div class="out-grid">
+            <pre id="xmlOut">No output generated yet.</pre>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const xlsxFile = document.getElementById("xlsxFile");
+    const sheetName = document.getElementById("sheetName");
+    const autoDetect = document.getElementById("autoDetect");
+    const manualCol = document.getElementById("manualCol");
+    const sampleOnly = document.getElementById("sampleOnly");
+    const downloadName = document.getElementById("downloadName");
+    const generateBtn = document.getElementById("generateBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const statusBox = document.getElementById("statusBox");
+    const xmlOut = document.getElementById("xmlOut");
+    const metaRows = document.getElementById("metaRows");
+    const metaSheet = document.getElementById("metaSheet");
+    const metaColumn = document.getElementById("metaColumn");
+
+    let workbook = null;
+    let generatedXml = "";
+
+    function setStatus(message, tone = "") {
+      statusBox.className = `status${tone ? ` ${tone}` : ""}`;
+      statusBox.textContent = message;
+    }
+
+    function escapeXml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+    }
+
+    function normalizePath(pathText) {
+      let text = String(pathText || "").trim();
+      if (!text) return "";
+      if (!text.startsWith("/")) text = `/${text}`;
+      while (text.includes("px:px:")) text = text.replaceAll("px:px:", "px:");
+      text = text.replaceAll("px:/", "px:");
+      text = text.replaceAll("//", "/");
+      text = text.replace(/(?<=[A-Za-z0-9_\]])(px:)(?=[A-Za-z_])/g, "/$1");
+      text = text.replace(/(\[[^\]]+\])(?=[A-Za-z_])/g, "$1/");
+      return text;
+    }
+
+    function splitSegments(pathText) {
+      const segments = [];
+      let current = "";
+      let depth = 0;
+      for (const ch of pathText) {
+        if (ch === "/" && depth === 0) {
+          const token = current.trim();
+          if (token) segments.push(token);
+          current = "";
+          continue;
+        }
+        if (ch === "[") depth += 1;
+        if (ch === "]" && depth > 0) depth -= 1;
+        current += ch;
+      }
+      const tail = current.trim();
+      if (tail) segments.push(tail);
+      return segments;
+    }
+
+    function localName(name) {
+      const idx = name.indexOf(":");
+      return idx >= 0 ? name.slice(idx + 1) : name;
+    }
+
+    function looksLikeXmlPath(value) {
+      const text = String(value || "").trim();
+      if (!text) return false;
+      if (!text.includes("/")) return false;
+      if ((text.match(/\//g) || []).length < 2) return false;
+      return /[A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?/.test(text);
+    }
+
+    function parseSegment(segment) {
+      const predicates = [...segment.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1].trim());
+      const base = segment.includes("[") ? segment.split("[", 1)[0].trim() : segment.trim();
+      const attrs = {};
+      for (const pred of predicates) {
+        const m = pred.match(/^\/?(?:[A-Za-z_][\w.-]*:)?@([A-Za-z_][\w.-]*)\s*=\s*['\"]([^'\"]+)['\"]$/);
+        if (m) attrs[m[1]] = m[2];
+      }
+      return { base, attrs };
+    }
+
+    function colRefToIndex(ref) {
+      const text = String(ref || "").trim();
+      if (!text) throw new Error("Empty column reference");
+      if (/^\d+$/.test(text)) {
+        const n = Number(text);
+        if (n < 1) throw new Error("Column index must be >= 1");
+        return n - 1;
+      }
+      if (!/^[A-Za-z]+$/.test(text)) throw new Error("Invalid column reference");
+      let out = 0;
+      for (const ch of text.toUpperCase()) {
+        out = out * 26 + (ch.charCodeAt(0) - 64);
+      }
+      return out - 1;
+    }
+
+    function indexToColRef(index) {
+      let n = index + 1;
+      let out = "";
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        out = String.fromCharCode(65 + rem) + out;
+        n = Math.floor((n - 1) / 26);
+      }
+      return out;
+    }
+
+    function detectXmlPathColumn(rows, startRow = 0) {
+      const sample = rows.slice(startRow, startRow + 400);
+      const maxCols = sample.reduce((m, r) => Math.max(m, r.length || 0), 0);
+      let best = null;
+      for (let col = 0; col < maxCols; col++) {
+        let nonEmpty = 0;
+        let hits = 0;
+        for (const row of sample) {
+          const cell = row[col];
+          if (cell === null || cell === undefined) continue;
+          const text = String(cell).trim();
+          if (!text) continue;
+          nonEmpty += 1;
+          if (looksLikeXmlPath(text)) hits += 1;
+        }
+        if (!nonEmpty) continue;
+        const ratio = hits / nonEmpty;
+        if (!best || hits > best.hits || (hits === best.hits && ratio > best.ratio)) {
+          best = { col, hits, ratio };
+        }
+      }
+      if (!best) return null;
+      if (best.hits < 3 || best.ratio < 0.4) return null;
+      return best.col;
+    }
+
+    function headerRowInfo(rows) {
+      const targetHeader = "element xpath or segment, loop, element identifier";
+      for (let i = 0; i < Math.min(50, rows.length); i++) {
+        const values = (rows[i] || [])
+          .filter((v) => v !== null && v !== undefined)
+          .map((v) => String(v).trim().toLowerCase())
+          .filter(Boolean);
+        if (values.includes(targetHeader)) return i;
+      }
+      return 0;
+    }
+
+    function findOrCreateChild(parent, tag, attrs) {
+      for (const child of parent.children) {
+        if (child.tag !== tag) continue;
+        let same = true;
+        for (const [k, v] of Object.entries(attrs)) {
+          if (child.attrs[k] !== v) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return child;
+      }
+      const node = { tag, attrs: { ...attrs }, text: "", children: [] };
+      parent.children.push(node);
+      return node;
+    }
+
+    function groupSameFieldSiblings(node) {
+      if (!node.children.length) return;
+      const groups = new Map();
+      const order = [];
+      for (const child of node.children) {
+        if (!groups.has(child.tag)) {
+          groups.set(child.tag, []);
+          order.push(child.tag);
+        }
+        groups.get(child.tag).push(child);
+      }
+      const reordered = [];
+      for (const tag of order) reordered.push(...groups.get(tag));
+      node.children = reordered;
+      for (const child of node.children) groupSameFieldSiblings(child);
+    }
+
+    function serializeXml(node, level = 0) {
+      const pad = "  ".repeat(level);
+      const attrs = Object.entries(node.attrs)
+        .map(([k, v]) => ` ${k}="${escapeXml(v)}"`)
+        .join("");
+
+      if (!node.children.length) {
+        const text = node.text ? escapeXml(node.text) : "";
+        return `${pad}<${node.tag}${attrs}>${text}</${node.tag}>`;
+      }
+
+      const inner = node.children.map((child) => serializeXml(child, level + 1)).join("\n");
+      const textPart = node.text ? escapeXml(node.text) : "";
+      return `${pad}<${node.tag}${attrs}>${textPart}${textPart ? "" : "\n"}${inner}\n${pad}</${node.tag}>`;
+    }
+
+    function buildTreeFromPaths(paths, forceSample = true) {
+      let root = null;
+      for (const rawPath of paths) {
+        const normalized = normalizePath(rawPath);
+        if (!normalized) continue;
+        const segments = splitSegments(normalized);
+        if (!segments.length) continue;
+
+        let current = null;
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i].trim();
+          if (!seg) continue;
+
+          if (seg.startsWith("@") || seg.startsWith("px:@")) {
+            if (current) {
+              const name = localName(seg.startsWith("@") ? seg.slice(1) : seg.slice(4));
+              current.attrs[name] = forceSample ? "SAMPLE_VALUE" : "SAMPLE_VALUE";
+            }
+            continue;
+          }
+
+          const parsed = parseSegment(seg);
+          if (!parsed.base) continue;
+
+          if (i === 0) {
+            if (!root) root = { tag: parsed.base, attrs: { ...parsed.attrs }, text: "", children: [] };
+            current = root;
+          } else if (current) {
+            current = findOrCreateChild(current, parsed.base, parsed.attrs);
+          }
+        }
+
+        if (current && !current.children.length) {
+          current.text = forceSample ? "SAMPLE_VALUE" : "SAMPLE_VALUE";
+        }
+      }
+
+      if (!root) return null;
+      groupSameFieldSiblings(root);
+      return root;
+    }
+
+    function parseRowsFromSheet(rows) {
+      const hdrRow = headerRowInfo(rows);
+      let pathCol = null;
+
+      if (!autoDetect.checked) {
+        if (!manualCol.value.trim()) {
+          throw new Error("Manual column is required when auto detect is disabled.");
+        }
+        pathCol = colRefToIndex(manualCol.value.trim());
+      } else {
+        pathCol = detectXmlPathColumn(rows, hdrRow + 1);
+        if (pathCol === null) {
+          pathCol = detectXmlPathColumn(rows, 0);
+        }
+      }
+
+      if (pathCol === null) {
+        throw new Error("Could not auto detect an XML path column.");
+      }
+
+      const paths = [];
+      for (let r = hdrRow + 1; r < rows.length; r++) {
+        const value = rows[r][pathCol];
+        if (value === null || value === undefined) continue;
+        const text = String(value).trim();
+        if (!looksLikeXmlPath(text)) continue;
+        paths.push(text);
+      }
+
+      return { paths, pathCol, hdrRow };
+    }
+
+    function rebuildSheetOptions() {
+      while (sheetName.options.length > 1) {
+        sheetName.remove(1);
+      }
+      if (!workbook) return;
+      for (const name of workbook.SheetNames) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        sheetName.appendChild(option);
+      }
+    }
+
+    xlsxFile.addEventListener("change", async () => {
+      generatedXml = "";
+      downloadBtn.disabled = true;
+      copyBtn.disabled = true;
+
+      const file = xlsxFile.files?.[0];
+      if (!file) {
+        workbook = null;
+        rebuildSheetOptions();
+        setStatus("Select an Excel file to begin.");
+        return;
+      }
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        workbook = XLSX.read(arrayBuffer, { type: "array" });
+        rebuildSheetOptions();
+        setStatus(`Loaded workbook: ${file.name}`, "good");
+      } catch (err) {
+        workbook = null;
+        rebuildSheetOptions();
+        setStatus(`Failed to read workbook: ${err.message}`, "warn");
+      }
+    });
+
+    generateBtn.addEventListener("click", () => {
+      try {
+        if (!workbook) throw new Error("Please load an .xlsx file first.");
+
+        const selected = sheetName.value || workbook.SheetNames[0];
+        const ws = workbook.Sheets[selected];
+        if (!ws) throw new Error(`Worksheet not found: ${selected}`);
+
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
+        const parsed = parseRowsFromSheet(rows);
+
+        if (!parsed.paths.length) {
+          throw new Error("No XML paths were found in the selected worksheet.");
+        }
+
+        const tree = buildTreeFromPaths(parsed.paths, sampleOnly.checked);
+        if (!tree) throw new Error("Unable to build XML from the selected rows.");
+
+        generatedXml = `<?xml version="1.0" encoding="utf-8"?>\n${serializeXml(tree)}`;
+        xmlOut.textContent = generatedXml;
+        metaRows.textContent = `Rows processed: ${parsed.paths.length}`;
+        metaSheet.textContent = `Worksheet: ${selected}`;
+        metaColumn.textContent = `Path column: ${indexToColRef(parsed.pathCol)} (${parsed.pathCol + 1})`;
+
+        downloadBtn.disabled = false;
+        copyBtn.disabled = false;
+        setStatus("XML generated successfully.", "good");
+      } catch (err) {
+        generatedXml = "";
+        downloadBtn.disabled = true;
+        copyBtn.disabled = true;
+        setStatus(err.message || String(err), "warn");
+      }
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      if (!generatedXml) return;
+      const fileName = (downloadName.value || "generated_sample.xml").trim();
+      const blob = new Blob([generatedXml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName.toLowerCase().endsWith(".xml") ? fileName : `${fileName}.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      if (!generatedXml) return;
+      try {
+        await navigator.clipboard.writeText(generatedXml);
+        setStatus("XML copied to clipboard.", "good");
+      } catch {
+        setStatus("Clipboard copy blocked by browser. You can still download the XML.", "warn");
+      }
+    });
+  </script>
+</body>
+</html>
