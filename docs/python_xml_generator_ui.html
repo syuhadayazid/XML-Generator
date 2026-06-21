@@ -290,11 +290,18 @@
       </div>
 
       <section class="cta-panel">
-        <h2>XML and EDI Generator</h2>
-        <p style="margin: 0; color: var(--muted);">Use the buttons below to generate XML or EDI directly from the same workbook.</p>
+        <h2>Generate XML (Browser)</h2>
+        <p style="margin: 0; color: var(--muted);">Upload your workbook below and click <strong>Generate XML</strong> to get a sample XML file instantly in the browser.</p>
         <div class="cta-actions">
-          <button id="generateXmlBtn" class="cta-button secondary" type="button">Generate XML</button>
-          <button id="generateEdiBtn" class="cta-button" type="button">Generate EDI</button>
+          <button id="generateXmlBtn" class="cta-button" type="button">Generate XML</button>
+        </div>
+      </section>
+
+      <section class="cta-panel" style="border-color: rgba(15,118,110,0.3); background: linear-gradient(135deg,rgba(15,118,110,0.08),rgba(15,118,110,0.02)); margin-top: 12px;">
+        <h2 style="color:#0f766e;">Generate EDI (Python Script)</h2>
+        <p style="margin: 0; color: var(--muted);">For accurate, validated EDI output, run the Python script on your machine. It produces 0-error X12 EDI with full loop ordering and SEF validation.</p>
+        <div class="cta-actions" style="margin-top: 12px;">
+          <code style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;font-size:0.85rem;color:#166534;word-break:break-all;">python generate_sample_edi.py input.xlsx --transaction-set 214 --sef-file X12-214-4010.sef -o output.edi</code>
         </div>
       </section>
 
@@ -390,7 +397,6 @@
     const downloadName = document.getElementById("downloadName");
     const generateBtn = document.getElementById("generateBtn");
     const generateXmlBtn = document.getElementById("generateXmlBtn");
-    const generateEdiBtn = document.getElementById("generateEdiBtn");
     const downloadBtn = document.getElementById("downloadBtn");
     const copyBtn = document.getElementById("copyBtn");
     const statusBox = document.getElementById("statusBox");
@@ -409,16 +415,12 @@
     }
 
     function syncModeUi() {
-      const mode = currentMode();
-      const isEdi = mode === "edi";
-      generateBtn.textContent = "Generate";
-      downloadBtn.textContent = isEdi ? "Download EDI" : "Download XML";
-      copyBtn.textContent = isEdi ? "Copy EDI" : "Copy XML";
-      autoDetectLabel.textContent = isEdi ? "Auto detect X12 path column" : "Auto detect XML path column";
-      manualColLabel.textContent = isEdi ? "Manual X12 path column (example: G)" : "Manual path column (example: B)";
-      downloadName.value = isEdi ? "generated_sample.edi" : "generated_sample.xml";
-      generateXmlBtn.classList.toggle("secondary", isEdi);
-      generateEdiBtn.classList.toggle("secondary", !isEdi);
+      generateBtn.textContent = "Generate XML";
+      downloadBtn.textContent = "Download XML";
+      copyBtn.textContent = "Copy XML";
+      autoDetectLabel.textContent = "Auto detect XML path column";
+      manualColLabel.textContent = "Manual path column (example: B)";
+      downloadName.value = "generated_sample.xml";
     }
 
     function setStatus(message, tone = "") {
@@ -1000,12 +1002,6 @@
 
     generateXmlBtn.addEventListener("click", () => {
       outputMode.value = "xml";
-      syncModeUi();
-      generateBtn.click();
-    });
-
-    generateEdiBtn.addEventListener("click", () => {
-      outputMode.value = "edi";
       syncModeUi();
       generateBtn.click();
     });
