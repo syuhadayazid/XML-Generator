@@ -529,15 +529,16 @@
       if (!t.includes("[") || !t.includes("]")) return null;
       const pred = t.slice(t.indexOf("[") + 1, t.lastIndexOf("]"));
       if (!pred) return null;
-      const target = segId === "L11" ? "L1102" : `${segId}01`;
+      const target = segId === "L11" ? "L1102" : segId === "LIN" ? "LIN02" : `${segId}01`;
       const em = pred.match(new RegExp(`\\b${target}\\b\\s*=\\s*['"]?([A-Za-z0-9]{1,10})['"]?`, "i"));
       if (em) return em[1].toUpperCase();
+      if (segId === "LIN") return null;
       const fm = pred.match(/=\s*['"]?([A-Za-z0-9]{1,4})['"]?/);
       return fm ? fm[1].toUpperCase() : null;
     }
 
     function extractInlineAssignments(rawValue, segId) {
-      if (!rawValue || !["N1","L11"].includes(segId)) return {};
+      if (!rawValue || !["N1","L11","LIN"].includes(segId)) return {};
       const text = String(rawValue).replace(/\r/g, " ");
       const result = {};
       const re = new RegExp(`\\b${segId}(\\d{2})\\b\\s*=\\s*['"]?([A-Za-z0-9]{1,10})['"]?`, "gi");
@@ -547,6 +548,32 @@
         if (pos >= 1) result[pos] = m[2].toUpperCase();
       }
       return result;
+    }
+
+    function extractPathAssignments(pathText, segId) {
+      const text = String(pathText || "").trim();
+      if (!text) return {};
+      let norm = text.startsWith("/") ? text : `/${text}`;
+      norm = norm.replace(/\/{2,}/g, "/");
+      const rawParts = splitSegments(norm);
+      let segPart = null;
+      for (const part of rawParts) {
+        if (localName(stripSegPredicate(part)).toUpperCase() === segId) {
+          segPart = part;
+          break;
+        }
+      }
+      if (!segPart || !segPart.includes("[") || !segPart.includes("]")) return {};
+      const pred = segPart.slice(segPart.indexOf("[") + 1, segPart.lastIndexOf("]"));
+      if (!pred) return {};
+      const out = {};
+      const re = new RegExp(`\\b${segId}(\\d{2})\\b\\s*=\\s*['"]?([A-Za-z0-9]{1,20})['"]?`, "gi");
+      let m;
+      while ((m = re.exec(pred)) !== null) {
+        const pos = parseInt(m[1], 10);
+        if (pos >= 1) out[pos] = m[2].toUpperCase();
+      }
+      return out;
     }
 
     function parseX12PathFull(pathText) {
@@ -569,7 +596,7 @@
       if (position < 1) return null;
       const oKey = rawParts.slice(0, idx + 1).map(p => localName(stripSegPredicate(p))).join("/");
       let qualifier = null;
-      if (segId === "N1" || segId === "L11") qualifier = extractSegQualifier(rawParts[idx], segId);
+      if (["N1", "L11", "REF", "DTM", "LIN"].includes(segId)) qualifier = extractSegQualifier(rawParts[idx], segId);
       return { segId, position, oKey, qualifier, rawPath: pathText };
     }
 
@@ -651,6 +678,42 @@
       return [2,g2O[parts[parts.length-1].toUpperCase()]??900,rep,oKey];
     }
 
+    function sortKey856(oKey, segId) {
+      let text = String(oKey || "").replace(/\[[^\]]*\]/g, "");
+      let parts = text.split("/").filter(Boolean);
+      if (parts.length >= 2 && parts[0].toUpperCase() === "X12" && /^TS_\d{3}$/i.test(parts[1])) parts = parts.slice(2);
+      let rep = 0;
+      if (parts.length && parts[parts.length - 1].includes("#")) {
+        const last = parts[parts.length - 1].split("#");
+        parts[parts.length - 1] = last[0];
+        rep = parseInt(last[1], 10) || 0;
+      }
+
+      const top856 = { BSN: 10, DTM: 20, GROUP_1: 30 };
+      const g1sOrder = { REF: 20, DTM: 30, GROUP_4: 40 };
+      const g1iOrder = { LIN: 10, SN1: 20, TD3: 25, REF: 30, DTM: 40, GROUP_4: 60 };
+      const g4Order = { N1: 10, N2: 20, N3: 30, N4: 40, REF: 50 };
+
+      if (!parts.length) return [999, rep, segId, oKey];
+      const first = parts[0].toUpperCase();
+      if (first !== "GROUP_1") return [0, top856[first] ?? 900, rep, segId, oKey];
+
+      const hm = String(oKey || "").match(/HL03\s*=\s*['\"]?([A-Z])['\"]?/i);
+      const ht = hm ? hm[1].toUpperCase() : "S";
+      const hlOrder = ht === "S" ? 0 : 1;
+
+      if (parts.length === 1) return [1, hlOrder, rep, segId, oKey];
+      const second = parts[1].toUpperCase();
+      if (second === "GROUP_4") {
+        const inner = g4Order[segId] ?? 900;
+        const parent = ht === "S" ? (g1sOrder.GROUP_4 ?? 40) : (g1iOrder.GROUP_4 ?? 60);
+        return [1, hlOrder, rep, parent, inner, oKey];
+      }
+
+      const map = ht === "S" ? g1sOrder : g1iOrder;
+      return [1, hlOrder, rep, map[segId] ?? 900, oKey];
+    }
+
     function cmpKeys(a,b) {
       const len=Math.max(a.length,b.length);
       for (let i=0;i<len;i++) { const av=a[i]??0,bv=b[i]??0; if(av<bv)return -1; if(av>bv)return 1; }
@@ -715,6 +778,24 @@
       return merged;
     }
 
+    function dropPlaceholderN1Children(lines) {
+      const childIds = new Set(["N2", "N3", "N4"]);
+      const ph = new Set(["", "X", "XX", "XXX", "S", "SV", "SAMPLE", "SAMPLE_VALUE", "XXXX", "XXXXXXX", "XXXXXXXX"]);
+      const out = [];
+      for (const line of lines) {
+        const t = String(line || "").trim();
+        const sid = t.split("*", 1)[0].toUpperCase();
+        if (childIds.has(sid)) {
+          const parts = t.replace(/~$/, "").split("*").slice(1);
+          const meaningful = parts.filter(v => !ph.has(String(v || "").trim().toUpperCase())).length;
+          const minMeaningful = sid === "N4" ? 2 : 1;
+          if (meaningful < minMeaningful) continue;
+        }
+        out.push(t);
+      }
+      return out;
+    }
+
     function buildEdiFromPaths(records) {
       const transactionSet = (() => {
         for (const r of records) { const m=String(r.path||"").match(/TS_(\d{3})/i); if(m) return m[1]; }
@@ -731,18 +812,22 @@
         const parsed=parseX12PathFull(record.path);
         if (!parsed) continue;
         let {segId,position,oKey,qualifier}=parsed;
+        const hlMatch = String(record.path || "").match(/HL03\s*=\s*['"]?([A-Z])['"]?/i);
+        const hlType = hlMatch ? hlMatch[1].toUpperCase() : null;
 
-        const inlineA=extractInlineAssignments(record.value,segId);
+        const inlineA={ ...extractPathAssignments(record.path, segId), ...extractInlineAssignments(record.value,segId) };
         const at8M=record.path.match(/\bAT801\b\s*=\s*['"]?([A-Za-z0-9]{1,10})['"]?/i);
         if(at8M&&!inlineA[1]) inlineA[1]=at8M[1].toUpperCase();
 
         let value=parseEdiCellValue(record.value);
         if(value==="__NO_MAPPING__") value="";
 
-        if((segId==="N1"||segId==="L11")&&qualifier) {
+        if((segId==="N1"||segId==="L11"||segId==="REF"||segId==="DTM"||segId==="LIN")&&qualifier) {
           oKey=`${oKey}[${qualifier}]`;
           if(segId==="N1"&&position===1&&PH.has(value.toUpperCase())) value=qualifier;
           if(segId==="L11"&&!inlineA[2]) inlineA[2]=qualifier;
+          if(segId==="REF"&&position===1&&PH.has(value.toUpperCase())) value=qualifier;
+          if(segId==="DTM"&&position===1&&PH.has(value.toUpperCase())) value=qualifier;
         }
 
         const assignedV=inlineA[position];
@@ -756,6 +841,7 @@
         const resolved=latestByBase[base]??base;
         const existing=occurrences.get(resolved);
         let startsNew=position===1;
+        if (segId === "LIN") startsNew = false;
         if(!startsNew&&existing&&existing.elements.size>0) {
           startsNew=existing.elements.has(position)||Object.entries(inlineA).some(([p,v])=>{ const pi=parseInt(p); return pi<position&&existing.elements.has(pi)&&existing.elements.get(pi)!==v; });
         }
@@ -764,14 +850,16 @@
           const next=(occCounters[base]||0)+1; occCounters[base]=next; fKey=`${base}#${next}`;
         }
         latestByBase[base]=fKey;
-        if(!occurrences.has(fKey)) { occurrences.set(fKey,{segId,oKey:fKey,elements:new Map()}); occOrder.push(fKey); }
+        if(!occurrences.has(fKey)) { occurrences.set(fKey,{segId,oKey:fKey,elements:new Map(),hlType}); occOrder.push(fKey); }
         const occ=occurrences.get(fKey);
+        if (!occ.hlType && hlType) occ.hlType = hlType;
         for(const[p,v] of Object.entries(inlineA)) { const pi=parseInt(p); if(!occ.elements.has(pi)) occ.elements.set(pi,v); }
         if(!occ.elements.has(position)) occ.elements.set(position,value);
       }
 
       const items=occOrder.map(k=>occurrences.get(k));
       if(transactionSet==="214") items.sort((a,b)=>cmpKeys(sortKey214(a.oKey),sortKey214(b.oKey)));
+      if(transactionSet==="856") items.sort((a,b)=>cmpKeys(sortKey856(a.oKey, a.segId),sortKey856(b.oKey, b.segId)));
 
       const n=new Date(),pad=v=>String(v).padStart(2,"0");
       const ymd=`${n.getFullYear()}${pad(n.getMonth()+1)}${pad(n.getDate())}`;
@@ -794,6 +882,7 @@
         }
         if(segId==="AT7"&&vals.length>=4&&vals[0]&&vals[2]){vals[2]="";vals[3]="";}
         if(segId==="MS1"&&vals.length>=5&&vals[0]&&vals[2]){vals[3]="";vals[4]="";}
+        if(segId==="DTM"){ while(vals.length>1 && PH2.has(String(vals[vals.length-1]||"").toUpperCase())) vals.pop(); }
         return`${segId}*${vals.join("*")}~`;
       }
 
@@ -802,11 +891,11 @@
       output.push(emitSeg("GS",null,8));
       output.push(`ST*${transactionSet}*0001~`);
 
-      let dataLines=[]; const group3=new Map(); const G3M="__G3__";
+      let dataLines=[]; let dataLineHl=[]; const group3=new Map(); const G3M="__G3__";
       let b10Done=false; let lxN=0;
 
       for(const item of items) {
-        const{segId,oKey,elements}=item;
+        const{segId,oKey,elements,hlType}=item;
         if(CTRL.has(segId)) continue;
         if(transactionSet==="214"&&segId==="B10"){if(b10Done)continue;b10Done=true;}
         const emitted=emitSeg(segId,elements,0);
@@ -821,6 +910,7 @@
           }
         }
         dataLines.push(emitted);
+        dataLineHl.push(hlType);
       }
 
       if(transactionSet==="214"&&group3.size>0) {
@@ -1099,15 +1189,20 @@
         const value = rows[r][pathCol];
         if (value === null || value === undefined) continue;
         const text = String(value).trim();
+        const candidates = mode === "edi"
+          ? text.split(/\r?\n/).map((v) => v.trim()).filter(Boolean)
+          : [text];
         if (mode === "edi") {
-          if (!looksLikeX12Path(text)) continue;
           // capture adjacent value cell for EDI
           let cellValue = null;
           for (let vc = pathCol + 1; vc < Math.min(rows[r].length, pathCol + 5); vc++) {
             const cv = rows[r][vc];
             if (cv !== null && cv !== undefined && String(cv).trim()) { cellValue = String(cv); break; }
           }
-          records.push({ path: text, value: cellValue });
+          for (const candidate of candidates) {
+            if (!looksLikeX12Path(candidate)) continue;
+            records.push({ path: candidate, value: cellValue });
+          }
         } else {
           if (!looksLikeXmlPath(text)) continue;
           records.push({ path: text, value: null });
