@@ -411,7 +411,7 @@
     function syncModeUi() {
       const mode = currentMode();
       const isEdi = mode === "edi";
-      generateBtn.textContent = "Generate XML";
+      generateBtn.textContent = isEdi ? "Generate EDI" : "Generate XML";
       downloadBtn.textContent = isEdi ? "Download EDI" : "Download XML";
       copyBtn.textContent = isEdi ? "Copy EDI" : "Copy XML";
       autoDetectLabel.textContent = isEdi ? "Auto detect X12 path column" : "Auto detect XML path column";
