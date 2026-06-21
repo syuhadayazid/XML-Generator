@@ -276,8 +276,12 @@
   <main class="wrap">
     <section class="hero">
       <h1>XML and EDI Generator</h1>
-      <p class="lead">UI build: v2026.06.08.2</p>
-      <p class="lead">Upload TXT, XLSX, or EDI/X12 mapping input, generate XML in the browser, and generate X12 EDI when X12 paths are detected.</p>
+      <p class="lead">UI build: v2026.06.22.1</p>
+      <p class="lead">A manager-friendly browser UI for testing XML and EDI generation on her own. Upload a workbook or mapping file, choose the worksheet and column, then generate and download the result without using PowerShell.</p>
+
+      <div class="actions">
+        <a class="button" href="python_xml_generator_ui.html">Open Python XML Generator UI</a>
+      </div>
 
       <div class="grid">
         <article class="card">
@@ -299,11 +303,21 @@
           <h2>Works On GitHub Pages</h2>
           <p>This UI runs fully in the browser, so users can upload a file and generate XML without running PowerShell on the website.</p>
         </article>
+
+        <article class="card">
+          <h2>Manager Quick Test</h2>
+          <ol>
+            <li>Open the browser UI.</li>
+            <li>Upload the workbook or mapping file.</li>
+            <li>Select the sheet and column if needed.</li>
+            <li>Generate the sample output and download it.</li>
+          </ol>
+        </article>
       </div>
 
       <section class="tool">
         <h2>Generate Output</h2>
-        <p>Select an input file, optionally set the XLSX column name, then click Generate Output.</p>
+        <p>Use this panel for a quick self-test. The browser will detect XML paths when possible and can also generate EDI from X12 mappings when a SEF file is provided.</p>
 
         <div class="tool-grid">
           <div class="field">
@@ -368,6 +382,10 @@
         </div>
 
         <div id="statusBox" class="status">No file loaded yet.</div>
+
+        <div class="status" style="margin-top: 12px; background: #f9f3e9; color: #5b6470;">
+          <strong>Quick test steps:</strong> choose output type, upload a file, set the worksheet or column if needed, click Generate Output, then download the XML or EDI result.
+        </div>
 
         <div class="output-grid">
           <section class="output">

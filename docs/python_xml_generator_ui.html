@@ -138,10 +138,53 @@
       color: var(--ink);
     }
 
+    .inline label {
+      margin: 0;
+    }
+
     .buttons {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+    }
+
+    .cta-panel {
+      margin: 16px 16px 0;
+      border: 1px solid rgba(9, 105, 218, 0.18);
+      border-radius: 14px;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(9, 105, 218, 0.08), rgba(9, 105, 218, 0.02));
+    }
+
+    .cta-panel h2 {
+      margin: 0 0 8px;
+    }
+
+    .cta-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    .cta-button {
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 11px 16px;
+      font: inherit;
+      font-weight: 700;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(9, 105, 218, 0.18);
+    }
+
+    .cta-button.secondary {
+      background: #fff;
+      color: var(--accent-strong);
+      border-color: var(--line);
+      box-shadow: none;
     }
 
     button {
@@ -235,18 +278,32 @@
   <main class="wrap">
     <section class="hero">
       <div class="hero-top">
-        <h1>Python XML Generator UI</h1>
-        <p class="sub">GitHub-style browser UI for generating sample XML from Excel mappings. This page runs fully in-browser.</p>
+        <h1>Python XML and EDI Generator UI</h1>
+        <p class="sub">Browser-only test UI for generating sample XML or EDI from workbook mappings. The EDI generator is now the primary action.</p>
         <div class="pill-row">
           <span class="pill">Auto detect XML column</span>
           <span class="pill">Sample value mode</span>
           <span class="pill">No backend required</span>
+          <span class="pill">Manager quick test</span>
+          <span class="pill">EDI default</span>
         </div>
       </div>
+
+      <section class="cta-panel">
+        <h2>EDI Generator</h2>
+        <p style="margin: 0; color: var(--muted);">Use this button to generate EDI output directly. It starts in EDI mode and will create an .edi download.</p>
+        <div class="cta-actions">
+          <button id="generateEdiBtn" class="cta-button" type="button">Generate EDI</button>
+          <button id="generateXmlBtn" class="cta-button secondary" type="button">Generate XML</button>
+        </div>
+      </section>
 
       <div class="content">
         <section class="panel">
           <h2>Input Settings</h2>
+          <div class="status good" style="margin-bottom: 12px;">
+            <strong>Quick test:</strong> click <em>Generate EDI</em> above, upload the workbook, select a worksheet if needed, then download the .edi file.
+          </div>
           <div class="field">
             <label for="xlsxFile">Excel file (.xlsx)</label>
             <input id="xlsxFile" type="file" accept=".xlsx">
@@ -259,13 +316,21 @@
             </select>
           </div>
 
+          <div class="field">
+            <label for="outputMode">Output type</label>
+            <select id="outputMode">
+              <option value="xml">XML</option>
+              <option value="edi" selected>EDI</option>
+            </select>
+          </div>
+
           <div class="inline">
             <input id="autoDetect" type="checkbox" checked>
-            <label for="autoDetect">Auto detect XML path column</label>
+            <label id="autoDetectLabel" for="autoDetect">Auto detect XML path column</label>
           </div>
 
           <div class="field">
-            <label for="manualCol">Manual path column (example: B)</label>
+            <label id="manualColLabel" for="manualCol">Manual path column (example: B)</label>
             <input id="manualCol" type="text" placeholder="Used when auto detect is OFF">
           </div>
 
@@ -281,11 +346,20 @@
 
           <div class="buttons">
             <button id="generateBtn" type="button">Generate XML</button>
+            <button id="generateEdiBtn" type="button">Generate EDI</button>
             <button id="downloadBtn" class="secondary" type="button" disabled>Download XML</button>
             <button id="copyBtn" class="secondary" type="button" disabled>Copy XML</button>
           </div>
 
           <div id="statusBox" class="status">Select an Excel file to begin.</div>
+
+          <div class="status good" style="margin-top: 12px;">
+            <strong>EDI generator visible here:</strong> the dropdown above controls whether the page generates XML or EDI, and it opens on EDI.
+          </div>
+
+          <div class="status" style="margin-top: 12px; background: #f9f3e9; color: #5b6470;">
+            <strong>Manager checklist:</strong> upload the file, choose the sheet, keep EDI selected to generate an EDI file, or switch to XML if needed, then download the generated file.
+          </div>
 
           <div id="debugBox" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; font-size: 0.85rem; font-family: monospace; display: none;">
             <strong>Debug Info:</strong>
@@ -311,11 +385,16 @@
   <script>
     const xlsxFile = document.getElementById("xlsxFile");
     const sheetName = document.getElementById("sheetName");
+    const outputMode = document.getElementById("outputMode");
     const autoDetect = document.getElementById("autoDetect");
     const manualCol = document.getElementById("manualCol");
+    const autoDetectLabel = document.getElementById("autoDetectLabel");
+    const manualColLabel = document.getElementById("manualColLabel");
     const sampleOnly = document.getElementById("sampleOnly");
     const downloadName = document.getElementById("downloadName");
     const generateBtn = document.getElementById("generateBtn");
+    const generateEdiBtn = document.getElementById("generateEdiBtn");
+    const generateXmlBtn = document.getElementById("generateXmlBtn");
     const downloadBtn = document.getElementById("downloadBtn");
     const copyBtn = document.getElementById("copyBtn");
     const statusBox = document.getElementById("statusBox");
@@ -328,6 +407,23 @@
 
     let workbook = null;
     let generatedXml = "";
+
+    function currentMode() {
+      return String(outputMode.value || "xml").toLowerCase();
+    }
+
+    function syncModeUi() {
+      const mode = currentMode();
+      const isEdi = mode === "edi";
+      generateBtn.textContent = isEdi ? "Generate EDI" : "Generate XML";
+      downloadBtn.textContent = isEdi ? "Download EDI" : "Download XML";
+      copyBtn.textContent = isEdi ? "Copy EDI" : "Copy XML";
+      autoDetectLabel.textContent = isEdi ? "Auto detect X12 path column" : "Auto detect XML path column";
+      manualColLabel.textContent = isEdi ? "Manual X12 path column (example: G)" : "Manual path column (example: B)";
+      downloadName.value = isEdi ? "generated_sample.edi" : "generated_sample.xml";
+      generateEdiBtn.classList.toggle("secondary", !isEdi);
+      generateXmlBtn.classList.toggle("secondary", isEdi);
+    }
 
     function setStatus(message, tone = "") {
       statusBox.className = `status${tone ? ` ${tone}` : ""}`;
@@ -392,6 +488,154 @@
       if ((text.match(/\//g) || []).length < 2) return false;
       return /[A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?/.test(text);
     }
+
+    function looksLikeX12Path(value) {
+      const text = String(value || "").trim();
+      if (!text) return false;
+      if (!text.includes("/")) return false;
+      if (!/\bX12\b/i.test(text)) return false;
+      return /\/[A-Za-z0-9_:-]{2,}\/[A-Za-z0-9_:-]{3,}/.test(text);
+    }
+
+    function detectX12PathColumn(rows, startRow = 0) {
+      const sample = rows.slice(startRow, startRow + 400);
+      const maxCols = sample.reduce((m, r) => Math.max(m, r.length || 0), 0);
+      let best = null;
+      for (let col = 0; col < maxCols; col++) {
+        let nonEmpty = 0;
+        let hits = 0;
+        for (const row of sample) {
+          const cell = row[col];
+          if (cell === null || cell === undefined) continue;
+          const text = String(cell).trim();
+          if (!text) continue;
+          nonEmpty += 1;
+          if (looksLikeX12Path(text)) hits += 1;
+        }
+        if (!nonEmpty) continue;
+        const ratio = hits / nonEmpty;
+        if (!best || hits > best.hits || (hits === best.hits && ratio > best.ratio)) {
+          best = { col, hits, ratio };
+        }
+      }
+      if (!best) return null;
+      if (best.hits < 1 || best.ratio < 0.2) return null;
+      return best.col;
+    }
+
+    function extractEdiSegmentInfo(pathText) {
+      const normalized = normalizePath(pathText);
+      if (!normalized) return null;
+
+      const parts = splitSegments(normalized).map((part) => localName(part));
+      if (parts.length < 3 || parts[0].toUpperCase() !== "X12") return null;
+
+      let index = 1;
+      if (index < parts.length && /^TS_\d{3}$/i.test(parts[index])) index += 1;
+      while (index < parts.length && /^GROUP_\d+$/i.test(parts[index])) index += 1;
+      if (index + 1 >= parts.length) return null;
+
+      const segmentId = parts[index].toUpperCase();
+      const elementName = parts[index + 1];
+      const positionMatch = elementName.match(/(\d{2})$/);
+      if (!/^[A-Z0-9]{2,3}$/.test(segmentId) || !positionMatch) return null;
+
+      return {
+        segmentId,
+        position: Number(positionMatch[1]),
+        occurrenceKey: parts.slice(0, index + 1).join("/"),
+      };
+    }
+
+    function getEdiSampleValue(segmentId, position, transactionSet) {
+      const now = new Date();
+      const pad = (value) => String(value).padStart(2, "0");
+      const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+      const hm = `${pad(now.getHours())}${pad(now.getMinutes())}`;
+
+      const samples = {
+        ISA: { 1: "00", 2: "          ", 3: "00", 4: "          ", 5: "ZZ", 6: "SENDERID      ", 7: "ZZ", 8: "RECEIVERID    ", 9: ymd.slice(2), 10: hm, 11: "U", 12: "00401", 13: "000000001", 14: "0", 15: "T", 16: ":" },
+        GS: { 1: transactionSet === "214" ? "QM" : transactionSet === "856" ? "SH" : "OW", 2: "SENDER", 3: "RECEIVER", 4: ymd, 5: hm, 6: "0001", 7: "X", 8: "004010" },
+        ST: { 1: transactionSet, 2: "0001" },
+        SE: { 1: "0000", 2: "0001" },
+        GE: { 1: "1", 2: "0001" },
+        IEA: { 1: "1", 2: "000000001" },
+        N1: { 1: "SH", 2: "SAMPLE_VALUE", 3: "93", 4: "SAMPLE_VALUE" },
+        AT7: { 1: "X2", 2: "NS", 5: ymd, 6: hm, 7: "UT" },
+        MS1: { 1: "CITY", 2: "ST", 3: "US" },
+        AT8: { 1: "G", 2: "G", 3: "1", 4: "1", 5: "1", 6: "L", 7: "1" },
+      };
+
+      return samples[segmentId]?.[position] ?? "SAMPLE_VALUE";
+    }
+
+    function formatEdiValue(segmentId, position, value) {
+      const text = String(value ?? "");
+      if (segmentId === "ISA" && (position === 6 || position === 8)) {
+        return text.slice(0, 15).padEnd(15, " ");
+      }
+      if (segmentId === "ISA" && position === 9 && /^\d{8}$/.test(text)) {
+        return text.slice(2);
+      }
+      if (segmentId === "ISA" && position === 13) {
+        const digits = text.replace(/\D/g, "") || "0";
+        return digits.slice(-9).padStart(9, "0");
+      }
+      return text;
+    }
+
+    function buildEdiFromPaths(records) {
+      const transactionSet = (() => {
+        for (const record of records) {
+          const match = String(record.path || "").match(/TS_(\d{3})/i);
+          if (match) return match[1];
+        }
+        return "214";
+      })();
+
+      const segments = [];
+      const seen = new Map();
+
+      for (const record of records) {
+        const info = extractEdiSegmentInfo(record.path);
+        if (!info) continue;
+
+        const key = `${info.occurrenceKey}::${info.segmentId}`;
+        if (!seen.has(key)) {
+          const segment = { segmentId: info.segmentId, elements: new Map() };
+          seen.set(key, segment);
+          segments.push(segment);
+        }
+
+        const segment = seen.get(key);
+        const useSample = sampleOnly.checked || !String(record.value || "").trim();
+        const rawValue = useSample ? getEdiSampleValue(info.segmentId, info.position, transactionSet) : String(record.value || "").trim();
+        segment.elements.set(info.position, formatEdiValue(info.segmentId, info.position, rawValue));
+      }
+
+      const lines = [];
+      lines.push(`ISA*${getEdiSampleValue("ISA", 1, transactionSet)}*${getEdiSampleValue("ISA", 2, transactionSet)}*${getEdiSampleValue("ISA", 3, transactionSet)}*${getEdiSampleValue("ISA", 4, transactionSet)}*${getEdiSampleValue("ISA", 5, transactionSet)}*${formatEdiValue("ISA", 6, getEdiSampleValue("ISA", 6, transactionSet))}*${getEdiSampleValue("ISA", 7, transactionSet)}*${formatEdiValue("ISA", 8, getEdiSampleValue("ISA", 8, transactionSet))}*${getEdiSampleValue("ISA", 9, transactionSet)}*${getEdiSampleValue("ISA", 10, transactionSet)}*${getEdiSampleValue("ISA", 11, transactionSet)}*${getEdiSampleValue("ISA", 12, transactionSet)}*${getEdiSampleValue("ISA", 13, transactionSet)}*${getEdiSampleValue("ISA", 14, transactionSet)}*${getEdiSampleValue("ISA", 15, transactionSet)}*${getEdiSampleValue("ISA", 16, transactionSet)}~`);
+      lines.push(`GS*${getEdiSampleValue("GS", 1, transactionSet)}*${getEdiSampleValue("GS", 2, transactionSet)}*${getEdiSampleValue("GS", 3, transactionSet)}*${getEdiSampleValue("GS", 4, transactionSet)}*${getEdiSampleValue("GS", 5, transactionSet)}*${getEdiSampleValue("GS", 6, transactionSet)}*${getEdiSampleValue("GS", 7, transactionSet)}*${getEdiSampleValue("GS", 8, transactionSet)}~`);
+      lines.push(`ST*${transactionSet}*${getEdiSampleValue("ST", 2, transactionSet)}~`);
+
+      for (const segment of segments) {
+        if (["ISA", "GS", "ST", "SE", "GE", "IEA"].includes(segment.segmentId)) continue;
+        const maxPos = Math.max(...segment.elements.keys(), 1);
+        const values = [];
+        for (let pos = 1; pos <= maxPos; pos += 1) {
+          values.push(segment.elements.get(pos) || getEdiSampleValue(segment.segmentId, pos, transactionSet));
+        }
+        lines.push(`${segment.segmentId}*${values.join("*")}~`);
+      }
+
+      const seCount = lines.length + 2;
+      lines.push(`SE*${seCount}*${getEdiSampleValue("SE", 2, transactionSet)}~`);
+      lines.push(`GE*${getEdiSampleValue("GE", 1, transactionSet)}*${getEdiSampleValue("GE", 2, transactionSet)}~`);
+      lines.push(`IEA*${getEdiSampleValue("IEA", 1, transactionSet)}*${getEdiSampleValue("IEA", 2, transactionSet)}~`);
+
+      return { text: lines.join("\n"), transactionSet };
+    }
+
 
     function parseSegment(segment) {
       const predicates = [...segment.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1].trim());
@@ -599,6 +843,7 @@
     function parseRowsFromSheet(rows) {
       const hdrRow = headerRowInfo(rows);
       let pathCol = null;
+      const mode = currentMode();
 
       if (!autoDetect.checked) {
         if (!manualCol.value.trim()) {
@@ -606,26 +851,30 @@
         }
         pathCol = colRefToIndex(manualCol.value.trim());
       } else {
-        pathCol = detectXmlPathColumn(rows, hdrRow + 1);
+        pathCol = mode === "edi" ? detectX12PathColumn(rows, hdrRow + 1) : detectXmlPathColumn(rows, hdrRow + 1);
         if (pathCol === null) {
-          pathCol = detectXmlPathColumn(rows, 0);
+          pathCol = mode === "edi" ? detectX12PathColumn(rows, 0) : detectXmlPathColumn(rows, 0);
         }
       }
 
       if (pathCol === null) {
-        throw new Error("Could not auto detect an XML path column. Disable auto-detect and manually enter B or 2 for the column.");
+        throw new Error(mode === "edi" ? "Could not auto detect an X12 path column. Disable auto-detect and manually enter G or 7 for the column." : "Could not auto detect an XML path column. Disable auto-detect and manually enter B or 2 for the column.");
       }
 
-      const paths = [];
+      const records = [];
       for (let r = hdrRow + 1; r < rows.length; r++) {
         const value = rows[r][pathCol];
         if (value === null || value === undefined) continue;
         const text = String(value).trim();
-        if (!looksLikeXmlPath(text)) continue;
-        paths.push(text);
+        if (mode === "edi") {
+          if (!looksLikeX12Path(text)) continue;
+        } else if (!looksLikeXmlPath(text)) {
+          continue;
+        }
+        records.push({ path: text, value: null });
       }
 
-      return { paths, pathCol, hdrRow };
+      return { records, pathCol, hdrRow };
     }
 
     function rebuildSheetOptions() {
@@ -640,6 +889,20 @@
         sheetName.appendChild(option);
       }
     }
+
+    outputMode.addEventListener("change", () => {
+      syncModeUi();
+      generatedXml = "";
+      downloadBtn.disabled = true;
+      copyBtn.disabled = true;
+      xmlOut.textContent = "No output generated yet.";
+      metaRows.textContent = "Rows processed: -";
+      metaSheet.textContent = "Worksheet: -";
+      metaColumn.textContent = "Path column: -";
+      setStatus(currentMode() === "edi" ? "EDI mode selected. Upload a workbook and generate EDI output." : "XML mode selected. Upload a workbook and generate XML output.");
+    });
+
+    syncModeUi();
 
     xlsxFile.addEventListener("change", async () => {
       generatedXml = "";
@@ -674,6 +937,7 @@
     generateBtn.addEventListener("click", () => {
       try {
         if (!workbook) throw new Error("Please load an .xlsx file first.");
+        const mode = currentMode();
 
         let selected = sheetName.value;
         if (!selected) {
@@ -699,22 +963,35 @@
         }
         
         const parsed = parseRowsFromSheet(rows);
-        if (!parsed.paths.length) {
-          throw new Error(`No XML paths found. Scanned ${rows.length} rows. Detected column: ${indexToColRef(parsed.pathCol)}. Try selecting a different worksheet.`);
+        if (!parsed.records.length) {
+          throw new Error(mode === "edi" ? `No X12 paths found. Scanned ${rows.length} rows. Detected column: ${indexToColRef(parsed.pathCol)}. Try selecting a different worksheet.` : `No XML paths found. Scanned ${rows.length} rows. Detected column: ${indexToColRef(parsed.pathCol)}. Try selecting a different worksheet.`);
         }
 
-        const tree = buildTreeFromPaths(parsed.paths, sampleOnly.checked);
+        if (mode === "edi") {
+          const built = buildEdiFromPaths(parsed.records);
+          generatedXml = built.text;
+          xmlOut.textContent = generatedXml;
+          metaRows.textContent = `Rows processed: ${parsed.records.length}`;
+          metaSheet.textContent = `Worksheet: ${selected}`;
+          metaColumn.textContent = `Path column: ${indexToColRef(parsed.pathCol)} (${parsed.pathCol + 1})`;
+          downloadBtn.disabled = false;
+          copyBtn.disabled = false;
+          setStatus(`✓ Generated EDI with ${parsed.records.length} paths from column ${indexToColRef(parsed.pathCol)}`, "good");
+          return;
+        }
+
+        const tree = buildTreeFromPaths(parsed.records.map((record) => record.path), sampleOnly.checked);
         if (!tree) throw new Error("Failed to build XML tree.");
 
         generatedXml = `<?xml version="1.0" encoding="utf-8"?>\n${serializeXml(tree)}`;
         xmlOut.textContent = generatedXml;
-        metaRows.textContent = `Rows processed: ${parsed.paths.length}`;
+        metaRows.textContent = `Rows processed: ${parsed.records.length}`;
         metaSheet.textContent = `Worksheet: ${selected}`;
         metaColumn.textContent = `Path column: ${indexToColRef(parsed.pathCol)} (${parsed.pathCol + 1})`;
 
         downloadBtn.disabled = false;
         copyBtn.disabled = false;
-        setStatus(`✓ Generated XML with ${parsed.paths.length} paths from column ${indexToColRef(parsed.pathCol)}`, "good");
+        setStatus(`✓ Generated XML with ${parsed.records.length} paths from column ${indexToColRef(parsed.pathCol)}`, "good");
       } catch (err) {
         generatedXml = "";
         downloadBtn.disabled = true;
@@ -725,14 +1002,28 @@
       }
     });
 
+    generateEdiBtn.addEventListener("click", () => {
+      outputMode.value = "edi";
+      syncModeUi();
+      generateBtn.click();
+    });
+
+    generateXmlBtn.addEventListener("click", () => {
+      outputMode.value = "xml";
+      syncModeUi();
+      generateBtn.click();
+    });
+
     downloadBtn.addEventListener("click", () => {
       if (!generatedXml) return;
       const fileName = (downloadName.value || "generated_sample.xml").trim();
-      const blob = new Blob([generatedXml], { type: "application/xml" });
+      const blob = new Blob([generatedXml], { type: currentMode() === "edi" ? "text/plain" : "application/xml" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = fileName.toLowerCase().endsWith(".xml") ? fileName : `${fileName}.xml`;
+      link.download = currentMode() === "edi"
+        ? (fileName.toLowerCase().endsWith(".edi") ? fileName : `${fileName}.edi`)
+        : (fileName.toLowerCase().endsWith(".xml") ? fileName : `${fileName}.xml`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -743,9 +1034,9 @@
       if (!generatedXml) return;
       try {
         await navigator.clipboard.writeText(generatedXml);
-        setStatus("XML copied to clipboard.", "good");
+        setStatus(currentMode() === "edi" ? "EDI copied to clipboard." : "XML copied to clipboard.", "good");
       } catch {
-        setStatus("Clipboard copy blocked by browser. You can still download the XML.", "warn");
+        setStatus(currentMode() === "edi" ? "Clipboard copy blocked by browser. You can still download the EDI." : "Clipboard copy blocked by browser. You can still download the XML.", "warn");
       }
     });
   </script>
