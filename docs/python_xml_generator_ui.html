@@ -610,7 +610,7 @@
       if (hcM) return hcM[1].trim();
       if (/continuous\s+sequential\s+number/i.test(first)) return "1";
       if (/\bmap\s+source\s+to\s+target\b|\bif\s+source\b|\brefer\b|\blookup\b/i.test(first)) return "SV";
-      if (/no\s+mapping/i.test(first)) return "S";
+      if (/^no\s+mapping$/i.test(first)) return "__NO_MAPPING__";
       const dtM = first.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})|(\d{4}-\d{2}-\d{2})/);
       if (dtM) {
         const ds = dtM[0].replace(/[-T:]/g,"").slice(0,8);
@@ -812,7 +812,7 @@
         const parsed=parseX12PathFull(record.path);
         if (!parsed) continue;
         let {segId,position,oKey,qualifier}=parsed;
-        const hlMatch = String(record.path || "").match(/HL03\s*=\s*['"]?([A-Z])['"]?/i);
+        const hlMatch = String(record.path || "").match(/GROUP_1\s*\[.*?HL03\s*=\s*['"]?([A-Z])['"]?/i);
         const hlType = hlMatch ? hlMatch[1].toUpperCase() : null;
 
         const inlineA={ ...extractPathAssignments(record.path, segId), ...extractInlineAssignments(record.value,segId) };
@@ -823,11 +823,12 @@
         if(value==="__NO_MAPPING__") value="";
 
         if((segId==="N1"||segId==="L11"||segId==="REF"||segId==="DTM"||segId==="LIN")&&qualifier) {
-          oKey=`${oKey}[${qualifier}]`;
-          if(segId==="N1"&&position===1&&PH.has(value.toUpperCase())) value=qualifier;
+          if(segId!=="LIN") oKey=`${oKey}[${qualifier}]`;
+          if(segId==="N1"&&!inlineA[1]) inlineA[1]=qualifier;
           if(segId==="L11"&&!inlineA[2]) inlineA[2]=qualifier;
-          if(segId==="REF"&&position===1&&PH.has(value.toUpperCase())) value=qualifier;
-          if(segId==="DTM"&&position===1&&PH.has(value.toUpperCase())) value=qualifier;
+          if(segId==="REF"&&!inlineA[1]) inlineA[1]=qualifier;
+          if(segId==="DTM"&&!inlineA[1]) inlineA[1]=qualifier;
+          if(segId==="LIN"&&!inlineA[2]) inlineA[2]=qualifier;
         }
 
         const assignedV=inlineA[position];
@@ -837,7 +838,10 @@
         if(CTRL.has(segId)) continue;
         if(segId==="CTT") continue;
 
-        const base=oKey;
+        let base=oKey;
+        if (transactionSet === "856" && hlType && base.includes("/GROUP_1/")) {
+          base = `${base}[HL03=${hlType}]`;
+        }
         const resolved=latestByBase[base]??base;
         const existing=occurrences.get(resolved);
         let startsNew=position===1;
@@ -882,7 +886,7 @@
         }
         if(segId==="AT7"&&vals.length>=4&&vals[0]&&vals[2]){vals[2]="";vals[3]="";}
         if(segId==="MS1"&&vals.length>=5&&vals[0]&&vals[2]){vals[3]="";vals[4]="";}
-        if(segId==="DTM"){ while(vals.length>1 && PH2.has(String(vals[vals.length-1]||"").toUpperCase())) vals.pop(); }
+        if(segId==="DTM"){ while(vals.length>2 && PH2.has(String(vals[vals.length-1]||"").toUpperCase())) vals.pop(); }
         return`${segId}*${vals.join("*")}~`;
       }
 
@@ -893,6 +897,7 @@
 
       let dataLines=[]; let dataLineHl=[]; const group3=new Map(); const G3M="__G3__";
       let b10Done=false; let lxN=0;
+      let lineItemCount=0;
 
       for(const item of items) {
         const{segId,oKey,elements,hlType}=item;
@@ -911,6 +916,7 @@
         }
         dataLines.push(emitted);
         dataLineHl.push(hlType);
+        if(segId==="LIN") lineItemCount += 1;
       }
 
       if(transactionSet==="214"&&group3.size>0) {
@@ -919,8 +925,121 @@
         dataLines=dataLines.flatMap(l=>l===G3M?g3exp:[l]);
       }
 
+      if (transactionSet === "856") {
+        const hlTypesSeen = [];
+        const hlTypeSet = new Set();
+        for (const r of records) {
+          const m = String(r.path || "").match(/GROUP_1\s*\[.*?HL03\s*=\s*['"]?([A-Z])['"]?/i);
+          if (m) {
+            const ht = m[1].toUpperCase();
+            if (!hlTypeSet.has(ht)) {
+              hlTypeSet.add(ht);
+              hlTypesSeen.push(ht);
+            }
+          }
+        }
+
+        const n1Children = new Set(["N2", "N3", "N4"]);
+        const hlTypeToLine = {};
+        let hlCounter = 0;
+        let shipmentHlNum = null;
+        for (const ht of hlTypesSeen) {
+          hlCounter += 1;
+          if (ht === "S") {
+            shipmentHlNum = hlCounter;
+            hlTypeToLine[ht] = `HL*${hlCounter}**S~`;
+          } else {
+            const parent = shipmentHlNum ? String(shipmentHlNum) : "1";
+            hlTypeToLine[ht] = `HL*${hlCounter}*${parent}*${ht}~`;
+          }
+        }
+
+        const shipHt = hlTypesSeen.find((h) => h === "S") || (hlTypesSeen.length ? hlTypesSeen[0] : null);
+        const itemHt = hlTypesSeen.find((h) => h !== "S") || shipHt;
+
+        const topSegs = new Set(["BSN", "DTM"]);
+        const topLines = [];
+        const hlBuckets = {};
+        for (const ht of hlTypesSeen) hlBuckets[ht] = [];
+        let lastN1Bucket = null;
+
+        for (let i = 0; i < dataLines.length; i++) {
+          const line = dataLines[i];
+          const sid = String(line || "").trim().split("*", 1)[0].toUpperCase();
+          const hlType = dataLineHl[i] || null;
+
+          if (topSegs.has(sid) && !hlType) {
+            topLines.push(line);
+            continue;
+          }
+
+          if (n1Children.has(sid)) {
+            const target = lastN1Bucket || shipHt;
+            if (target && hlBuckets[target]) hlBuckets[target].push(line);
+            else topLines.push(line);
+            continue;
+          }
+
+          const bucket = (hlType && hlBuckets[hlType]) ? hlType : shipHt;
+          if (bucket && hlBuckets[bucket]) {
+            if (sid === "N1") lastN1Bucket = bucket;
+            hlBuckets[bucket].push(line);
+          } else {
+            topLines.push(line);
+          }
+        }
+
+        if (shipHt && hlBuckets[shipHt]) {
+          const shipBucket = hlBuckets[shipHt];
+          const itemBucket = itemHt && hlBuckets[itemHt] ? hlBuckets[itemHt] : [];
+
+          const dtmQualifier = (line) => {
+            const parts = String(line || "").trim().replace(/~$/, "").split("*");
+            if (parts.length >= 2 && parts[0].toUpperCase() === "DTM") return (parts[1] || "").trim().toUpperCase();
+            return null;
+          };
+
+          const dtmPool = {};
+          for (const src of [...shipBucket, ...itemBucket]) {
+            const q = dtmQualifier(src);
+            if (!q) continue;
+            if (!dtmPool[q]) dtmPool[q] = [];
+            dtmPool[q].push(src);
+          }
+
+          const rebuildBucket = (baseLines, allowedQualifiers) => {
+            const nonDtm = baseLines.filter((line) => String(line || "").trim().split("*", 1)[0].toUpperCase() !== "DTM");
+            const keptDtm = [];
+            for (const q of allowedQualifiers) {
+              if (dtmPool[q] && dtmPool[q].length) keptDtm.push(dtmPool[q][0]);
+            }
+            let insertIdx = nonDtm.length;
+            for (let i = 0; i < nonDtm.length; i++) {
+              if (String(nonDtm[i] || "").trim().split("*", 1)[0].toUpperCase() === "N1") {
+                insertIdx = i;
+                break;
+              }
+            }
+            return [...nonDtm.slice(0, insertIdx), ...keptDtm, ...nonDtm.slice(insertIdx)];
+          };
+
+          hlBuckets[shipHt] = rebuildBucket(shipBucket, ["193", "194"]);
+          if (itemHt && hlBuckets[itemHt]) {
+            hlBuckets[itemHt] = rebuildBucket(itemBucket, ["161"]);
+          }
+        }
+
+        const expanded = [...topLines];
+        for (const ht of hlTypesSeen) {
+          if (hlTypeToLine[ht]) expanded.push(hlTypeToLine[ht]);
+          expanded.push(...(hlBuckets[ht] || []));
+        }
+        dataLines = expanded;
+      }
+
       if(["214","856"].includes(transactionSet)) {
         dataLines=collapseN1(dataLines);
+        dataLines=dropPlaceholderN1Children(dataLines);
         dataLines=collapseAt8(dataLines);
         dataLines=collapseLx(dataLines);
         dataLines=mergeAt7Ms1(dataLines);
@@ -939,7 +1058,9 @@
 
       dataLines=dedupeLines(dataLines);
       output.push(...dataLines);
-      output.push(`SE*${dataLines.length+2}*0001~`);
+      if(transactionSet!=="214") output.push(`CTT*${lineItemCount}~`);
+      const seCount = transactionSet==="214" ? (dataLines.length+2) : (3 + dataLines.length);
+      output.push(`SE*${seCount}*0001~`);
       output.push("GE*1*0001~");
       output.push("IEA*1*000000001~");
       return { text: dedupeLines(output).join("\n"), transactionSet };
