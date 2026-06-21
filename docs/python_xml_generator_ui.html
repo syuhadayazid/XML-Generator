@@ -290,8 +290,12 @@
       </div>
 
       <section class="cta-panel">
-        <h2>EDI Generator</h2>
-        <p style="margin: 0; color: var(--muted);">Choose <strong>EDI</strong> in Output type, then click <strong>Generate</strong>. That uses the same page to create an .edi download.</p>
+        <h2>XML and EDI Generator</h2>
+        <p style="margin: 0; color: var(--muted);">Use the buttons below to generate XML or EDI directly from the same workbook.</p>
+        <div class="cta-actions">
+          <button id="generateXmlBtn" class="cta-button secondary" type="button">Generate XML</button>
+          <button id="generateEdiBtn" class="cta-button" type="button">Generate EDI</button>
+        </div>
       </section>
 
       <div class="content">
@@ -338,8 +342,7 @@
           </div>
 
           <div class="buttons">
-            <button id="generateBtn" type="button">Generate XML</button>
-            <button id="generateEdiBtn" type="button">Generate EDI</button>
+            <button id="generateBtn" type="button">Generate</button>
             <button id="downloadBtn" class="secondary" type="button" disabled>Download XML</button>
             <button id="copyBtn" class="secondary" type="button" disabled>Copy XML</button>
           </div>
@@ -347,7 +350,7 @@
           <div id="statusBox" class="status">Select an Excel file to begin.</div>
 
           <div class="status good" style="margin-top: 12px;">
-            <strong>EDI generator visible here:</strong> the Output type dropdown controls XML vs EDI, and Generate will create the selected format.
+            <strong>XML and EDI generator visible here:</strong> use the buttons above or the Output type dropdown to choose the format.
           </div>
 
           <div class="status" style="margin-top: 12px; background: #f9f3e9; color: #5b6470;">
@@ -386,6 +389,8 @@
     const sampleOnly = document.getElementById("sampleOnly");
     const downloadName = document.getElementById("downloadName");
     const generateBtn = document.getElementById("generateBtn");
+    const generateXmlBtn = document.getElementById("generateXmlBtn");
+    const generateEdiBtn = document.getElementById("generateEdiBtn");
     const downloadBtn = document.getElementById("downloadBtn");
     const copyBtn = document.getElementById("copyBtn");
     const statusBox = document.getElementById("statusBox");
@@ -412,6 +417,8 @@
       autoDetectLabel.textContent = isEdi ? "Auto detect X12 path column" : "Auto detect XML path column";
       manualColLabel.textContent = isEdi ? "Manual X12 path column (example: G)" : "Manual path column (example: B)";
       downloadName.value = isEdi ? "generated_sample.edi" : "generated_sample.xml";
+      generateXmlBtn.classList.toggle("secondary", isEdi);
+      generateEdiBtn.classList.toggle("secondary", !isEdi);
     }
 
     function setStatus(message, tone = "") {
@@ -989,6 +996,18 @@
         console.error("Generation error:", msg);
         setStatus(`⚠ ${msg}`, "warn");
       }
+    });
+
+    generateXmlBtn.addEventListener("click", () => {
+      outputMode.value = "xml";
+      syncModeUi();
+      generateBtn.click();
+    });
+
+    generateEdiBtn.addEventListener("click", () => {
+      outputMode.value = "edi";
+      syncModeUi();
+      generateBtn.click();
     });
 
     downloadBtn.addEventListener("click", () => {
