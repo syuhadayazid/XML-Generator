@@ -792,7 +792,7 @@
           if(segId==="AT8"){if(pos===6&&!new Set(["B","C","D","E","F","G","H","L","M","N","R","S","T","U","V","X"]).has(raw.toString().trim().toUpperCase()))raw="L";if(pos===7&&!/^\d+(?:\.\d+)?$/.test(raw.toString().trim()))raw="1";}
           vals.push(fmtEdi(segId,pos,raw));
         }
-        if(segId==="AT7"&&vals.length>=4&&vals[0]&&vals[1]){vals[2]="";vals[3]="";}
+        if(segId==="AT7"&&vals.length>=4&&vals[0]&&vals[2]){vals[2]="";vals[3]="";}
         if(segId==="MS1"&&vals.length>=5&&vals[0]&&vals[2]){vals[3]="";vals[4]="";}
         return`${segId}*${vals.join("*")}~`;
       }
@@ -939,15 +939,29 @@
       return { pathCol, paths, hdrRow };
     }
 
+    function scoreWorksheetForEdi(rows) {
+      if (!rows || !rows.length) return null;
+      const hdrRow = headerRowInfo(rows);
+      let pathCol = detectX12PathColumn(rows, hdrRow + 1);
+      if (pathCol === null) pathCol = detectX12PathColumn(rows, 0);
+      if (pathCol === null) return null;
+      let paths = 0;
+      for (let r = hdrRow + 1; r < rows.length; r++) {
+        const v = rows[r][pathCol];
+        if (v !== null && v !== undefined && looksLikeX12Path(String(v).trim())) paths++;
+      }
+      return { pathCol, paths, hdrRow };
+    }
+
     function detectBestWorksheet(workbookObj) {
+      const mode = currentMode();
       let best = null;
       for (const name of workbookObj.SheetNames) {
         const ws = workbookObj.Sheets[name];
         if (!ws || !ws["!ref"]) continue;
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null });
-        const score = scoreWorksheetForXml(rows);
+        const score = mode === "edi" ? scoreWorksheetForEdi(rows) : scoreWorksheetForXml(rows);
         if (!score || score.paths < 1) continue;
-
         if (!best || score.paths > best.paths) {
           best = { name, ...score };
         }
