@@ -1063,28 +1063,7 @@
           }
         }
 
-        const ensureRefQualifier = (bucketLines, qualifier, value = "SAMPLE_VALUE") => {
-          const q = String(qualifier || "").trim().toUpperCase();
-          if (!q) return bucketLines;
-          for (const line of bucketLines) {
-            const parts = String(line || "").trim().replace(/~$/, "").split("*");
-            if (parts.length >= 3 && parts[0].toUpperCase() === "REF" && (parts[1] || "").trim().toUpperCase() === q && (parts[2] || "").trim()) {
-              return bucketLines;
-            }
-          }
-          const refLine = `REF*${q}*${value}~`;
-          let insertIdx = bucketLines.length;
-          for (let i = 0; i < bucketLines.length; i++) {
-            if (String(bucketLines[i] || "").trim().split("*", 1)[0].toUpperCase() === "N1") {
-              insertIdx = i;
-              break;
-            }
-          }
-          return [...bucketLines.slice(0, insertIdx), refLine, ...bucketLines.slice(insertIdx)];
-        };
-
-        if (shipHt && hlBuckets[shipHt]) hlBuckets[shipHt] = ensureRefQualifier(hlBuckets[shipHt], "CN");
-        if (itemHt && hlBuckets[itemHt]) hlBuckets[itemHt] = ensureRefQualifier(hlBuckets[itemHt], "SCA");
+        // Only output segments that exist in the workbook mappings
 
         const expanded = [...topLines];
         for (const ht of hlTypesSeen) {

@@ -1490,27 +1490,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
             if item_ht and item_ht in hl_buckets:
                 hl_buckets[item_ht] = rebuild_bucket(item_bucket, ["161"])
 
-        def ensure_ref_qualifier(bucket_lines: list[str], qualifier: str, value: str = "SAMPLE_VALUE") -> list[str]:
-            q = str(qualifier or "").strip().upper()
-            if not q:
-                return bucket_lines
-
-            for line in bucket_lines:
-                parts = line.rstrip("~").split("*")
-                if len(parts) >= 3 and parts[0].upper() == "REF" and parts[1].strip().upper() == q and parts[2].strip():
-                    return bucket_lines
-
-            ref_line = f"REF*{q}*{value}~"
-            insert_idx = next(
-                (idx for idx, line in enumerate(bucket_lines) if line.rstrip("~").split("*")[0].upper() == "N1"),
-                len(bucket_lines),
-            )
-            return bucket_lines[:insert_idx] + [ref_line] + bucket_lines[insert_idx:]
-
-        if ship_ht and ship_ht in hl_buckets:
-            hl_buckets[ship_ht] = ensure_ref_qualifier(hl_buckets[ship_ht], "CN")
-        if item_ht and item_ht in hl_buckets:
-            hl_buckets[item_ht] = ensure_ref_qualifier(hl_buckets[item_ht], "SCA")
+        # Only output segments that exist in the workbook mappings
 
         # Reassemble: top lines, then each HL block prefixed with its HL segment
         expanded_856: list[str] = []
