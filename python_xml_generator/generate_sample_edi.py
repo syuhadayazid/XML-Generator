@@ -499,7 +499,36 @@ def parse_path_to_segment(path: str) -> tuple[str, int, str, str | None] | None:
     if position < 1:
         return None
 
-    occurrence_parts = [strip_segment_predicate(local_name(part)) for part in raw_parts[: idx + 1]]
+    def _occ_part(raw_part: str, seg_raw: str | None = None) -> str:
+        stripped = strip_segment_predicate(local_name(raw_part))
+        if re.fullmatch(r"GROUP_\d+", stripped, flags=re.IGNORECASE):
+            # Case 1: predicate on GROUP itself contains N1/N101 qualifier
+            if "[" in raw_part:
+                pred = raw_part[raw_part.find("[") + 1 : raw_part.rfind("]")]
+                n101_m = re.search(r'N1\s*/\s*N101\s*=\s*["\']?([A-Za-z0-9]{1,10})["\']?', pred, re.IGNORECASE)
+                if n101_m:
+                    return f"{stripped}[{n101_m.group(1).upper()}]"
+            # Case 2: GROUP_4 has no predicate, but child N1 has N101 qualifier
+            # Look ahead at the segment part itself if it's N1
+            if seg_raw is not None:
+                child_stripped = strip_segment_predicate(local_name(seg_raw))
+                if child_stripped.upper() == "N1" and "[" in seg_raw:
+                    spred = seg_raw[seg_raw.find("[") + 1 : seg_raw.rfind("]")]
+                    n101_m2 = re.search(r'N101\s*=\s*["\']?([A-Za-z0-9]{1,10})["\']?', spred, re.IGNORECASE)
+                    if n101_m2:
+                        return f"{stripped}[{n101_m2.group(1).upper()}]"
+        return stripped
+
+    # Pass the segment raw part (raw_parts[idx]) to the last GROUP before the segment
+    seg_raw_part = raw_parts[idx]
+    occurrence_parts = []
+    for i, part in enumerate(raw_parts[: idx + 1]):
+        stripped = strip_segment_predicate(local_name(part))
+        if re.fullmatch(r"GROUP_\d+", stripped, flags=re.IGNORECASE) and i == idx - 1:
+            # This GROUP is the direct parent of the segment — pass segment raw for case 2
+            occurrence_parts.append(_occ_part(part, seg_raw_part))
+        else:
+            occurrence_parts.append(_occ_part(part))
     occurrence_key = "/".join(occurrence_parts)
     qualifier = None
     if segment_id in {"N1", "L11", "REF", "DTM", "LIN"}:
@@ -993,9 +1022,12 @@ def build_occurrence_sort_key(item: dict, transaction_set: str) -> tuple:
             return (1, hl_order, repeat_index, segment_id, occurrence_key)
 
         second = parts[1].upper()
-        if second == "GROUP_4":
+        if second.startswith("GROUP_4"):
+            # Extract N1 qualifier from raw occurrence_key (predicates preserved there)
+            n1q_m = re.search(r'GROUP_4\[([A-Z0-9]{1,10})\]', occurrence_key, re.IGNORECASE)
+            n1_q = n1q_m.group(1).upper() if n1q_m else ""
             inner_order = g4_order.get(segment_id, 900)
-            return (1, hl_order, repeat_index, g1s_order.get("GROUP_4", 40) if hl_type == "S" else g1i_order.get("GROUP_4", 60), inner_order, occurrence_key)
+            return (1, hl_order, repeat_index, g1s_order.get("GROUP_4", 40) if hl_type == "S" else g1i_order.get("GROUP_4", 60), n1_q, inner_order, occurrence_key)
 
         order_map = g1s_order if hl_type == "S" else g1i_order
         return (1, hl_order, repeat_index, order_map.get(segment_id, 900), occurrence_key)
@@ -1249,6 +1281,11 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                 elif pos > 4 and str(raw).strip().upper() in placeholder_values:
                     raw = ""
 
+            if segment_id == "DTM":
+                raw_norm = str(raw).strip().upper()
+                if pos == 2 and (raw_norm in placeholder_values or raw_norm.startswith("SAMPLE")):
+                    raw = today
+
             if segment_id == "AT8":
                 if pos == 6:
                     value_text = str(raw).strip().upper()
@@ -1442,6 +1479,28 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
             hl_buckets[ship_ht] = rebuild_bucket(ship_bucket, ["193", "194"])
             if item_ht and item_ht in hl_buckets:
                 hl_buckets[item_ht] = rebuild_bucket(item_bucket, ["161"])
+
+        def ensure_ref_qualifier(bucket_lines: list[str], qualifier: str, value: str = "SAMPLE_VALUE") -> list[str]:
+            q = str(qualifier or "").strip().upper()
+            if not q:
+                return bucket_lines
+
+            for line in bucket_lines:
+                parts = line.rstrip("~").split("*")
+                if len(parts) >= 3 and parts[0].upper() == "REF" and parts[1].strip().upper() == q and parts[2].strip():
+                    return bucket_lines
+
+            ref_line = f"REF*{q}*{value}~"
+            insert_idx = next(
+                (idx for idx, line in enumerate(bucket_lines) if line.rstrip("~").split("*")[0].upper() == "N1"),
+                len(bucket_lines),
+            )
+            return bucket_lines[:insert_idx] + [ref_line] + bucket_lines[insert_idx:]
+
+        if ship_ht and ship_ht in hl_buckets:
+            hl_buckets[ship_ht] = ensure_ref_qualifier(hl_buckets[ship_ht], "CN")
+        if item_ht and item_ht in hl_buckets:
+            hl_buckets[item_ht] = ensure_ref_qualifier(hl_buckets[item_ht], "SCA")
 
         # Reassemble: top lines, then each HL block prefixed with its HL segment
         expanded_856: list[str] = []

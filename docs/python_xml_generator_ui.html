@@ -594,7 +594,30 @@
       if (!posM) return null;
       const position = parseInt(posM[1]);
       if (position < 1) return null;
-      const oKey = rawParts.slice(0, idx + 1).map(p => localName(stripSegPredicate(p))).join("/");
+      const oKey = (() => {
+        const segRaw = rawParts[idx];
+        return rawParts.slice(0, idx + 1).map((p, i) => {
+          const stripped = localName(stripSegPredicate(p));
+          if (/^GROUP_\d+$/i.test(stripped)) {
+            // Case 1: GROUP itself has N1/N101 predicate
+            if (p.includes("[") && p.includes("]")) {
+              const pred = p.slice(p.indexOf("[") + 1, p.lastIndexOf("]"));
+              const n101m = pred.match(/N1\s*\/\s*N101\s*=\s*["']?([A-Za-z0-9]{1,10})["']?/i);
+              if (n101m) return `${stripped}[${n101m[1].toUpperCase()}]`;
+            }
+            // Case 2: direct parent GROUP of segment; segment is N1 with N101 predicate
+            if (i === idx - 1 && segRaw.includes("[") && segRaw.includes("]")) {
+              const segStripped = localName(stripSegPredicate(segRaw));
+              if (segStripped.toUpperCase() === "N1") {
+                const spred = segRaw.slice(segRaw.indexOf("[") + 1, segRaw.lastIndexOf("]"));
+                const n101m2 = spred.match(/N101\s*=\s*["']?([A-Za-z0-9]{1,10})["']?/i);
+                if (n101m2) return `${stripped}[${n101m2[1].toUpperCase()}]`;
+              }
+            }
+          }
+          return stripped;
+        }).join("/");
+      })();
       let qualifier = null;
       if (["N1", "L11", "REF", "DTM", "LIN"].includes(segId)) qualifier = extractSegQualifier(rawParts[idx], segId);
       return { segId, position, oKey, qualifier, rawPath: pathText };
@@ -704,10 +727,12 @@
 
       if (parts.length === 1) return [1, hlOrder, rep, segId, oKey];
       const second = parts[1].toUpperCase();
-      if (second === "GROUP_4") {
+      if (second.startsWith("GROUP_4")) {
+        const n1qm = String(oKey || "").match(/GROUP_4\[([A-Z0-9]{1,10})\]/i);
+        const n1q = n1qm ? n1qm[1].toUpperCase() : "";
         const inner = g4Order[segId] ?? 900;
         const parent = ht === "S" ? (g1sOrder.GROUP_4 ?? 40) : (g1iOrder.GROUP_4 ?? 60);
-        return [1, hlOrder, rep, parent, inner, oKey];
+        return [1, hlOrder, rep, parent, n1q, inner, oKey];
       }
 
       const map = ht === "S" ? g1sOrder : g1iOrder;
@@ -881,6 +906,7 @@
           if(!raw||raw==="SAMPLE_VALUE") raw=getEdiSample(segId,pos,transactionSet);
           if(segId==="G61"){if(pos===1&&PH2.has(raw.toString().toUpperCase()))raw="CN";else if(pos===2&&PH2.has(raw.toString().toUpperCase()))raw=ymd;else if(pos>2&&PH2.has(raw.toString().toUpperCase()))raw="";}
           if(segId==="G62"){if(pos===1&&PH2.has(raw.toString().toUpperCase()))raw="86";else if(pos===2&&PH2.has(raw.toString().toUpperCase()))raw=ymd;else if(pos===3&&PH2.has(raw.toString().toUpperCase()))raw="8";else if(pos===4&&PH2.has(raw.toString().toUpperCase()))raw=hm;else if(pos>4&&PH2.has(raw.toString().toUpperCase()))raw="";}
+          if(segId==="DTM"&&pos===2){const rn=raw.toString().trim().toUpperCase();if(PH2.has(rn)||rn.startsWith("SAMPLE"))raw=ymd;}
           if(segId==="AT8"){if(pos===6&&!new Set(["B","C","D","E","F","G","H","L","M","N","R","S","T","U","V","X"]).has(raw.toString().trim().toUpperCase()))raw="L";if(pos===7&&!/^\d+(?:\.\d+)?$/.test(raw.toString().trim()))raw="1";}
           vals.push(fmtEdi(segId,pos,raw));
         }
@@ -1028,6 +1054,29 @@
             hlBuckets[itemHt] = rebuildBucket(itemBucket, ["161"]);
           }
         }
+
+        const ensureRefQualifier = (bucketLines, qualifier, value = "SAMPLE_VALUE") => {
+          const q = String(qualifier || "").trim().toUpperCase();
+          if (!q) return bucketLines;
+          for (const line of bucketLines) {
+            const parts = String(line || "").trim().replace(/~$/, "").split("*");
+            if (parts.length >= 3 && parts[0].toUpperCase() === "REF" && (parts[1] || "").trim().toUpperCase() === q && (parts[2] || "").trim()) {
+              return bucketLines;
+            }
+          }
+          const refLine = `REF*${q}*${value}~`;
+          let insertIdx = bucketLines.length;
+          for (let i = 0; i < bucketLines.length; i++) {
+            if (String(bucketLines[i] || "").trim().split("*", 1)[0].toUpperCase() === "N1") {
+              insertIdx = i;
+              break;
+            }
+          }
+          return [...bucketLines.slice(0, insertIdx), refLine, ...bucketLines.slice(insertIdx)];
+        };
+
+        if (shipHt && hlBuckets[shipHt]) hlBuckets[shipHt] = ensureRefQualifier(hlBuckets[shipHt], "CN");
+        if (itemHt && hlBuckets[itemHt]) hlBuckets[itemHt] = ensureRefQualifier(hlBuckets[itemHt], "SCA");
 
         const expanded = [...topLines];
         for (const ht of hlTypesSeen) {
