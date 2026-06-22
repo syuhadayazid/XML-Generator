@@ -928,7 +928,7 @@ def drop_placeholder_only_cd3(lines: list[str]) -> list[str]:
 
 def drop_placeholder_only_n1_children(lines: list[str]) -> list[str]:
     # Keep N2/N3/N4 only when they carry at least one meaningful mapped value.
-    child_ids = {"N2", "N3", "N4"}
+    child_ids = {"N3", "N4"}
     placeholder_values = {
         "",
         "X",
