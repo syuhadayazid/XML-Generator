@@ -1437,6 +1437,138 @@
       for (const child of node.children) groupSameFieldSiblings(child);
     }
 
+    function mergeNodeInto(base, extra) {
+      for (const [k, v] of Object.entries(extra.attrs || {})) {
+        if (!(k in base.attrs)) base.attrs[k] = v;
+      }
+
+      const extraText = String(extra.text || "").trim();
+      const baseText = String(base.text || "").trim();
+      if (extraText && !baseText) base.text = extraText;
+
+      for (const child of extra.children || []) {
+        base.children.push(child);
+      }
+    }
+
+    function mergeDuplicateChildTag(parent, tagName) {
+      if (!parent || !Array.isArray(parent.children)) return;
+      const matches = parent.children.filter((child) => child.tag === tagName);
+      if (matches.length <= 1) return;
+
+      const base = matches[0];
+      for (let i = 1; i < matches.length; i++) {
+        mergeNodeInto(base, matches[i]);
+      }
+
+      let kept = false;
+      parent.children = parent.children.filter((child) => {
+        if (child.tag !== tagName) return true;
+        if (!kept) {
+          kept = true;
+          return true;
+        }
+        return false;
+      });
+    }
+
+    function normalizeExtrinsicAttrKeys(node) {
+      if (!node || !Array.isArray(node.children)) return;
+      if (node.tag === "Extrinsic") {
+        if (Object.prototype.hasOwnProperty.call(node.attrs, "name") && !Object.prototype.hasOwnProperty.call(node.attrs, "Name")) {
+          node.attrs.Name = node.attrs.name;
+          delete node.attrs.name;
+        }
+      }
+      for (const child of node.children) normalizeExtrinsicAttrKeys(child);
+    }
+
+    function dedupeExtrinsicByName(parent) {
+      if (!parent || !Array.isArray(parent.children)) return;
+      const seen = new Set();
+      parent.children = parent.children.filter((child) => {
+        if (child.tag !== "Extrinsic") return true;
+        const name = String(child.attrs?.Name ?? child.attrs?.name ?? "").trim().toLowerCase();
+        if (!name) return true;
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
+    }
+
+    function reorderExtrinsicBlock(parent, keepBeforeTags) {
+      if (!parent || !Array.isArray(parent.children)) return;
+      const before = [];
+      const extrinsic = [];
+      const after = [];
+
+      for (const child of parent.children) {
+        if (child.tag === "Extrinsic") {
+          extrinsic.push(child);
+          continue;
+        }
+        if (keepBeforeTags.has(child.tag)) {
+          before.push(child);
+          continue;
+        }
+        after.push(child);
+      }
+
+      parent.children = [...before, ...extrinsic, ...after];
+    }
+
+    function applyXmlPostProcessing(root) {
+      if (!root) return;
+      normalizeExtrinsicAttrKeys(root);
+
+      const request = (root.children || []).find((child) => child.tag === "Request");
+      const shipNoticeRequest = (request?.children || []).find((child) => child.tag === "ShipNoticeRequest");
+      if (!shipNoticeRequest) {
+        groupSameFieldSiblings(root);
+        return;
+      }
+
+      mergeDuplicateChildTag(shipNoticeRequest, "ShipNoticeHeader");
+
+      const shipNoticePortion = (shipNoticeRequest.children || []).find((child) => child.tag === "ShipNoticePortion");
+      if (shipNoticePortion) {
+        mergeDuplicateChildTag(shipNoticePortion, "ShipNoticeItem");
+      }
+
+      const shipNoticeHeader = (shipNoticeRequest.children || []).find((child) => child.tag === "ShipNoticeHeader");
+      if (shipNoticeHeader) {
+        dedupeExtrinsicByName(shipNoticeHeader);
+        reorderExtrinsicBlock(shipNoticeHeader, new Set(["Contact"]));
+      }
+
+      const shipNoticeItem = (shipNoticePortion?.children || []).find((child) => child.tag === "ShipNoticeItem");
+      if (shipNoticeItem) {
+        const blockedNames = new Set([
+          "Vendor Location Address 1",
+          "Vendor Location Address 2",
+          "Vendor Location Address 3",
+          "Vendor Location Address 4",
+          "Vendor Location Address 5",
+          "Vendor Location City",
+          "Vendor Location County",
+          "Vendor Location State",
+          "Vendor Location Country",
+          "Vendor Location Zip",
+        ]);
+
+        shipNoticeItem.children = (shipNoticeItem.children || []).filter((child) => {
+          if (child.tag !== "Extrinsic") return true;
+          const name = String(child.attrs?.Name ?? child.attrs?.name ?? "").trim();
+          return !blockedNames.has(name);
+        });
+
+        dedupeExtrinsicByName(shipNoticeItem);
+        reorderExtrinsicBlock(shipNoticeItem, new Set(["ItemID", "Batch"]));
+      }
+
+      groupSameFieldSiblings(root);
+    }
+
     function serializeXml(node, level = 0) {
       const pad = "  ".repeat(level);
       const attrs = Object.entries(node.attrs)
@@ -1491,7 +1623,7 @@
       }
 
       if (!root) return null;
-      groupSameFieldSiblings(root);
+      applyXmlPostProcessing(root);
       return root;
     }
 
