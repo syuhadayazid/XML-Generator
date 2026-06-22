@@ -245,7 +245,7 @@ def parse_value(raw_value: str | None) -> str:
         return "SAMPLE_VALUE"
 
     if re.fullmatch(r"(?i)no\s+mapping", first_line):
-        return "S"
+        return NO_MAPPING_TOKEN
 
     dt_value = extract_datetime_token(first_line)
     if dt_value is not None:
@@ -306,14 +306,22 @@ def extract_path_element_assignments(path: str, segment_id: str) -> dict[int, st
         return {}
 
     assignments: dict[int, str] = {}
-    pattern = rf"(?i)\b{re.escape(segment_id)}(\d{{2}})\b\s*=\s*['\"]?([A-Za-z0-9]{{1,20}})['\"]?"
+    pattern = rf"(?i)\b{re.escape(segment_id)}(\d{{2}})\b\s*=\s*['\"]?([^'\"]+?)['\"]?(?=\s*(?:\band\b|$))"
     for pos_text, value in re.findall(pattern, predicate):
         pos = int(pos_text)
         if pos < 1:
             continue
-        assignments[pos] = value.strip().upper()
+        cleaned = value.strip()
+        if re.fullmatch(r"[A-Za-z0-9]+", cleaned):
+            cleaned = cleaned.upper()
+        assignments[pos] = cleaned
 
     return assignments
+
+
+def compact_ref_label(label: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9]+", "", str(label or "").strip())
+    return text or "SAMPLE_VALUE"
 
 
 def detect_path_column(rows: list[tuple], start_row: int = 0) -> int | None:
@@ -442,19 +450,6 @@ def load_x12_rows(
                     continue
                 value_text = candidate_text
                 break
-
-            # If nothing was found on the right, allow qualifier hints from nearby left cells.
-            if value_text is None:
-                for candidate_idx in range(max(0, path_idx - 3), path_idx):
-                    cell_value = row[candidate_idx]
-                    if cell_value is None:
-                        continue
-                    candidate_text = str(cell_value).strip()
-                    if not candidate_text:
-                        continue
-                    if re.search(r"(?i)\b(?:N101|L1101|L1102)\b\s*=", candidate_text):
-                        value_text = candidate_text
-                        break
 
         for candidate_path in path_candidates:
             if not looks_like_x12_path(candidate_path):
@@ -625,8 +620,8 @@ def get_sample_value(segment_id: str, position: int, transaction_set: str) -> st
             3: "1",
             4: "1",
             5: "1",
-            6: "1",
-            7: "KG",
+            6: "L",
+            7: "1",
         }
         return defaults.get(position, "1")
 
@@ -635,6 +630,10 @@ def get_sample_value(segment_id: str, position: int, transaction_set: str) -> st
 
 def format_edi_value(segment_id: str, position: int, value: str) -> str:
     text = str(value or "")
+
+    # Keep internal placeholder token stable, but render human-friendly output.
+    if text.strip().upper() == "SAMPLE_VALUE":
+        text = "SAMPLE VALUE"
 
     if segment_id == "ISA" and position in (6, 8):
         return text[:15].ljust(15, " ")
@@ -684,7 +683,7 @@ def fit_value_to_element_rule(value: str, rule: SefElementDefinition) -> str:
         target_length = max(1, target_length)
         return "X" * target_length
 
-    if text in {"SAMPLE_VALUE", "SAMPLE_V", "SAMPLE", "SAM", "SAMP"}:
+    if text in {"SAMPLE_VALUE", "SAMPLE VALUE", "SAMPLE_V", "SAMPLE", "SAM", "SAMP"}:
         return build_short_placeholder()
 
     if max_length > 0 and len(text) > max_length:
@@ -899,6 +898,164 @@ def merge_at7_ms1_groups(lines: list[str]) -> list[str]:
     return merged
 
 
+def merge_duplicate_mea_by_qualifier(lines: list[str]) -> list[str]:
+    placeholder_values = {
+        "",
+        "X",
+        "XX",
+        "XXX",
+        "S",
+        "SV",
+        "SAMPLE",
+        "SAMPLE_VALUE",
+        "XXXX",
+        "XXXXXXX",
+        "XXXXXXXX",
+    }
+
+    def rank_mea(line: str) -> tuple[int, int]:
+        parts = str(line or "").strip().rstrip("~").split("*")[1:]
+        meaningful = sum(1 for part in parts if str(part or "").strip().upper() not in placeholder_values)
+        return (len(parts), meaningful)
+
+    def flush_cluster(cluster: list[str]) -> list[str]:
+        if not cluster:
+            return []
+        order: list[tuple[str, str]] = []
+        best: dict[tuple[str, str], str] = {}
+        for line in cluster:
+            parts = str(line or "").strip().rstrip("~").split("*")
+            q1 = parts[1].strip().upper() if len(parts) > 1 else ""
+            q2 = parts[2].strip().upper() if len(parts) > 2 else ""
+            key = (q1, q2)
+            if key not in best:
+                order.append(key)
+                best[key] = line
+                continue
+            if rank_mea(line) > rank_mea(best[key]):
+                best[key] = line
+        return [str(best[key] or "").strip() for key in order]
+
+    merged: list[str] = []
+    cluster: list[str] = []
+    for line in lines:
+        text = str(line or "").strip()
+        if text.startswith("MEA*"):
+            cluster.append(text)
+            continue
+        merged.extend(flush_cluster(cluster))
+        cluster = []
+        merged.append(text)
+    merged.extend(flush_cluster(cluster))
+    return merged
+
+
+def merge_duplicate_l11_by_qualifier(lines: list[str]) -> list[str]:
+    placeholder_values = {
+        "",
+        "X",
+        "XX",
+        "XXX",
+        "S",
+        "SV",
+        "SAMPLE",
+        "SAMPLE_VALUE",
+        "SAMPLE VALUE",
+        "XXXX",
+        "XXXXXXX",
+        "XXXXXXXX",
+    }
+
+    def rank_l11(line: str) -> tuple[int, int]:
+        parts = str(line or "").strip().rstrip("~").split("*")[1:]
+        meaningful = sum(1 for part in parts if str(part or "").strip().upper() not in placeholder_values)
+        return (meaningful, len(parts))
+
+    best_by_key: dict[str, str] = {}
+    key_order: list[str] = []
+    for line in lines:
+        text = str(line or "").strip()
+        if not text.startswith("L11*"):
+            continue
+        parts = text.rstrip("~").split("*")
+        qualifier = parts[2].strip().upper() if len(parts) > 2 else ""
+        key = qualifier
+        if key not in best_by_key:
+            key_order.append(key)
+            best_by_key[key] = text
+            continue
+        if rank_l11(text) > rank_l11(best_by_key[key]):
+            best_by_key[key] = text
+
+    kept_counts: dict[str, int] = {key: 0 for key in key_order}
+    merged: list[str] = []
+    for line in lines:
+        text = str(line or "").strip()
+        if not text.startswith("L11*"):
+            merged.append(text)
+            continue
+        parts = text.rstrip("~").split("*")
+        qualifier = parts[2].strip().upper() if len(parts) > 2 else ""
+        key = qualifier
+        if key not in best_by_key:
+            merged.append(text)
+            continue
+        if kept_counts[key] == 0 and text == best_by_key[key]:
+            merged.append(text)
+            kept_counts[key] += 1
+
+    return merged
+
+
+def attach_g61_to_matching_n1_group(lines: list[str]) -> list[str]:
+    reordered = [str(line or "").strip() for line in lines if str(line or "").strip()]
+
+    def seg_id(text: str) -> str:
+        return text.split("*", 1)[0].upper() if text else ""
+
+    def qualifier_at(text: str, idx: int) -> str:
+        parts = text.rstrip("~").split("*")
+        return parts[idx].strip().upper() if len(parts) > idx else ""
+
+    g61_indices = [i for i, line in enumerate(reordered) if line.startswith("G61*")]
+    # Process from bottom to top so index changes do not invalidate upcoming positions.
+    for g_idx in sorted(g61_indices, reverse=True):
+        g_line = reordered[g_idx]
+        g_qualifier = qualifier_at(g_line, 1)
+        if not g_qualifier:
+            continue
+
+        n1_idx = next(
+            (
+                i
+                for i, line in enumerate(reordered)
+                if line.startswith("N1*") and qualifier_at(line, 1) == g_qualifier
+            ),
+            -1,
+        )
+        if n1_idx < 0:
+            continue
+
+        # Remove current G61, then insert it at the end of the matching N1 block.
+        reordered.pop(g_idx)
+        if g_idx < n1_idx:
+            n1_idx -= 1
+
+        insert_idx = n1_idx + 1
+        while insert_idx < len(reordered):
+            sid = seg_id(reordered[insert_idx])
+            if sid == "N1":
+                break
+            if sid in {"N2", "N3", "N4", "G61", "G62", "L11"}:
+                insert_idx += 1
+                continue
+            break
+
+        reordered.insert(insert_idx, g_line)
+
+    return reordered
+
+
 def drop_placeholder_only_cd3(lines: list[str]) -> list[str]:
     placeholder_values = {
         "",
@@ -996,10 +1153,26 @@ def build_occurrence_sort_key(item: dict, transaction_set: str) -> tuple:
     if transaction_set == "856":
         # Top-level 856 order: BSN=10, DTM=20, then GROUP_1 loops
         top856 = {"BSN": 10, "DTM": 20, "GROUP_1": 30}
-        # Inside GROUP_1[HL03="S"] (shipment): HL emitted automatically, then REF/DTM/N1
-        g1s_order = {"REF": 20, "DTM": 30, "GROUP_4": 40}
-        # Inside GROUP_1[HL03="I"] (item): LIN, SN1, TD3, REF, DTM, GROUP_4
-        g1i_order = {"LIN": 10, "SN1": 20, "TD3": 25, "REF": 30, "DTM": 40, "GROUP_4": 60}
+        # Inside GROUP_1[HL03="S"] (shipment): HL emitted automatically, then TD1/TD5, REF, DTM, N1 loop
+        g1s_order = {"TD1": 10, "TD5": 15, "REF": 20, "DTM": 30, "GROUP_4": 40}
+        # Inside GROUP_1 non-shipment loops (I/U): keep transport details before REF per SEF flow
+        g1i_order = {
+            "LIN": 10,
+            "SN1": 20,
+            "MEA": 22,
+            "PWK": 23,
+            "PKG": 24,
+            "TD1": 25,
+            "TD5": 26,
+            "TD3": 27,
+            "TD4": 28,
+            "TSD": 29,
+            "REF": 30,
+            "MAN": 35,
+            "DTM": 40,
+            "GROUP_4": 60,
+            "CUR": 70,
+        }
         # Inside GROUP_4 (N1 loop)
         g4_order = {"N1": 10, "N2": 20, "N3": 30, "N4": 40, "REF": 50}
 
@@ -1012,14 +1185,14 @@ def build_occurrence_sort_key(item: dict, transaction_set: str) -> tuple:
 
         # Determine HL type from occurrence key predicate
         hl_type = "S"
-        hl_m = re.search(r"HL03\s*=\s*[\"']?([A-Z])[\"']?", occurrence_key, re.IGNORECASE)
+        hl_m = re.search(r"HL03\s*=\s*[\"']?([A-Z0-9]{1,3})[\"']?", occurrence_key, re.IGNORECASE)
         if hl_m:
             hl_type = hl_m.group(1).upper()
 
         hl_order = 0 if hl_type == "S" else 1
 
         if len(parts) == 1:
-            return (1, hl_order, repeat_index, segment_id, occurrence_key)
+            return (1, hl_order, segment_id, repeat_index, occurrence_key)
 
         second = parts[1].upper()
         if second.startswith("GROUP_4"):
@@ -1027,10 +1200,10 @@ def build_occurrence_sort_key(item: dict, transaction_set: str) -> tuple:
             n1q_m = re.search(r'GROUP_4\[([A-Z0-9]{1,10})\]', occurrence_key, re.IGNORECASE)
             n1_q = n1q_m.group(1).upper() if n1q_m else ""
             inner_order = g4_order.get(segment_id, 900)
-            return (1, hl_order, repeat_index, g1s_order.get("GROUP_4", 40) if hl_type == "S" else g1i_order.get("GROUP_4", 60), n1_q, inner_order, occurrence_key)
+            return (1, hl_order, g1s_order.get("GROUP_4", 40) if hl_type == "S" else g1i_order.get("GROUP_4", 60), n1_q, inner_order, repeat_index, occurrence_key)
 
         order_map = g1s_order if hl_type == "S" else g1i_order
-        return (1, hl_order, repeat_index, order_map.get(segment_id, 900), occurrence_key)
+        return (1, hl_order, order_map.get(segment_id, 900), repeat_index, occurrence_key)
 
     if transaction_set != "214":
         return build_generic_path_sort_key(parts, segment_id, repeat_index, occurrence_key)
@@ -1147,12 +1320,33 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                 # LIN02 is the first product/service ID qualifier.
                 inline_assignments.setdefault(2, qualifier)
 
+        # Some mappings carry N1 qualifier at loop level (e.g. GROUP_1[N1/N101="CN"]).
+        # When N1 has no inline qualifier, inherit it from the occurrence key so CN is preserved.
+        if segment_id == "N1" and 1 not in inline_assignments:
+            loop_qualifiers = re.findall(r"GROUP_\d+\[([A-Z0-9]{1,10})\]", occurrence_key, flags=re.IGNORECASE)
+            if loop_qualifiers:
+                inline_assignments[1] = loop_qualifiers[-1].upper()
+
         assigned_for_position = inline_assignments.get(position)
         if assigned_for_position and value in {"", "S", "SV", "SAM", "SAMPLE", "SAMPLE_VALUE"}:
             value = assigned_for_position
 
         if segment_id == "REF" and position != 1 and value in {"SV", "S", "SAMPLE"}:
             value = "SAMPLE_VALUE"
+
+        if segment_id == "REF":
+            ref03_match = re.search(r'(?i)\bREF03\s*=\s*["\']([^"\']+)["\']', path or "")
+            is_ship_header_ref = (
+                qualifier == "ZZ"
+                and "/GROUP_1[HL/HL03=\"S\"]/REF[" in (path or "")
+            )
+            if ref03_match and is_ship_header_ref:
+                ref03_label = ref03_match.group(1).strip()
+                inline_assignments.setdefault(3, ref03_label)
+                if position == 2:
+                    value = compact_ref_label(ref03_label)
+                elif position == 3 and value in {"", "S", "SV", "SAM", "SAMPLE", "SAMPLE_VALUE"}:
+                    value = ref03_label
 
         if segment_id in CONTROL_SEGMENTS:
             control_maps.setdefault(segment_id, {})
@@ -1164,7 +1358,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
 
         # Determine 856 HL type from the raw path predicate (GROUP_1[HL/HL03="S"] etc.)
         hl_type_856 = None
-        hl_m_856 = re.search(r"GROUP_1\s*\[.*?HL03\s*=\s*[\"']?([A-Z])[\"']?", path, re.IGNORECASE)
+        hl_m_856 = re.search(r"GROUP_1\s*\[.*?HL03\s*=\s*[\"']?([A-Z0-9]{1,3})[\"']?", path, re.IGNORECASE)
         if hl_m_856:
             hl_type_856 = hl_m_856.group(1).upper()
 
@@ -1258,7 +1452,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
         values: list[str] = []
         for pos in range(1, max_pos + 1):
             raw = source.get(pos, "")
-            if not raw or raw == "SAMPLE_VALUE":
+            if not raw or (raw == "SAMPLE_VALUE" and not (segment_id == "REF" and pos == 1)):
                 raw = get_sample_value(segment_id, pos, transaction_set)
 
             if segment_id == "G61":
@@ -1304,7 +1498,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                 values[3] = ""
 
         if segment_id == "MS1" and len(values) >= 5:
-            if values[0] and values[3]:
+            if values[0] and values[2]:
                 values[3] = ""
                 values[4] = ""
 
@@ -1338,7 +1532,8 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                 continue
             b10_emitted = True
 
-        emitted_line = emit_segment(segment_id, item["elements"], 0)
+        force_count = 3 if transaction_set == "214" and segment_id == "B10" else 0
+        emitted_line = emit_segment(segment_id, item["elements"], force_count)
 
         if transaction_set == "214":
             group3_match = re.search(r"^(.*?/GROUP_3)/[^/#]+(?:#(\d+))?$", occurrence_key)
@@ -1372,7 +1567,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
         hl_types_seen: list[str] = []
         hl_types_set: set[str] = set()
         for path_raw, _ in rows:
-            g1_m = re.search(r"GROUP_1\s*\[.*?HL03\s*=\s*[\"']?([A-Z])[\"']?", path_raw, re.IGNORECASE)
+            g1_m = re.search(r"GROUP_1\s*\[.*?HL03\s*=\s*[\"']?([A-Z0-9]{1,3})[\"']?", path_raw, re.IGNORECASE)
             if g1_m:
                 ht = g1_m.group(1).upper()
                 if ht not in hl_types_set:
@@ -1524,7 +1719,61 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
         data_lines = collapse_to_single_at8(data_lines)
         data_lines = collapse_to_single_lx(data_lines)
         data_lines = merge_at7_ms1_groups(data_lines)
+        data_lines = merge_duplicate_mea_by_qualifier(data_lines)
         data_lines = drop_placeholder_only_cd3(data_lines)
+
+    if transaction_set == "214":
+        # Ensure loop-level N1 qualifiers (e.g. GROUP_1[N1/N101="CN"]) materialize as N1 segments.
+        expected_n1_qualifiers: list[str] = []
+        seen_expected: set[str] = set()
+        for path_raw, _ in rows:
+            q_match = re.search(
+                r'GROUP_1\s*\[\s*N1\s*/\s*N101\s*=\s*["\']?([A-Z0-9]{1,10})',
+                str(path_raw or ""),
+                re.IGNORECASE,
+            )
+            if not q_match:
+                continue
+            q_value = q_match.group(1).upper()
+            if q_value in seen_expected:
+                continue
+            seen_expected.add(q_value)
+            expected_n1_qualifiers.append(q_value)
+
+        existing_n1_qualifiers = {
+            (str(line or "").rstrip("~").split("*")[1].strip().upper())
+            for line in data_lines
+            if str(line or "").strip().startswith("N1*") and len(str(line or "").rstrip("~").split("*")) > 1
+        }
+
+        for qualifier in expected_n1_qualifiers:
+            if qualifier in existing_n1_qualifiers:
+                continue
+
+            new_n1 = emit_segment("N1", {1: qualifier}, 4)
+
+            # Prefer to insert before matching G61*<qualifier> when present.
+            insert_index = next(
+                (
+                    idx
+                    for idx, line in enumerate(data_lines)
+                    if str(line or "").strip().upper().startswith(f"G61*{qualifier}*")
+                ),
+                -1,
+            )
+            if insert_index == -1:
+                # Otherwise insert before first LX to keep party/address segments ahead of status loops.
+                insert_index = next(
+                    (idx for idx, line in enumerate(data_lines) if str(line or "").strip().startswith("LX*")),
+                    len(data_lines),
+                )
+
+            data_lines.insert(insert_index, new_n1)
+            existing_n1_qualifiers.add(qualifier)
+
+    if transaction_set == "214":
+        data_lines = merge_duplicate_l11_by_qualifier(data_lines)
+        data_lines = attach_g61_to_matching_n1_group(data_lines)
 
     if transaction_set == "214":
         first_k1_index = next((idx for idx, line in enumerate(data_lines) if line.startswith("K1*")), None)
@@ -1844,6 +2093,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional SEF file path used to validate the generated EDI",
     )
+    parser.add_argument(
+        "--normalize-to-sef",
+        action="store_true",
+        help="Normalize/truncate generated values to SEF element rules before validation (default: off, for UI parity).",
+    )
     return parser.parse_args()
 
 
@@ -1890,9 +2144,10 @@ def main() -> int:
         if schema is None:
             validation_warnings.append(f"No matching transaction set {transaction_set} found in SEF: {sef_path}")
         else:
-            _, segment_definitions, element_definitions = schema
-            edi_text = normalize_edi_to_sef(edi_text, segment_definitions, element_definitions, transaction_set)
-            edi_text = "\n".join(dedupe_consecutive_lines(edi_text.splitlines()))
+            if args.normalize_to_sef:
+                _, segment_definitions, element_definitions = schema
+                edi_text = normalize_edi_to_sef(edi_text, segment_definitions, element_definitions, transaction_set)
+                edi_text = "\n".join(dedupe_consecutive_lines(edi_text.splitlines()))
             validation_errors, validation_warnings = validate_edi_against_sef(edi_text, schema)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
