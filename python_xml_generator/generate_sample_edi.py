@@ -631,8 +631,8 @@ def get_sample_value(segment_id: str, position: int, transaction_set: str) -> st
 def format_edi_value(segment_id: str, position: int, value: str) -> str:
     text = str(value or "")
 
-    # Keep internal placeholder token stable, but render human-friendly output.
-    if text.strip().upper() == "SAMPLE_VALUE":
+    # Keep internal placeholder tokens stable, but render one human-friendly value.
+    if text.strip().upper() in {"S", "SV", "SAMPLE", "SAMPLE_VALUE"}:
         text = "SAMPLE VALUE"
 
     if segment_id == "ISA" and position in (6, 8):
@@ -1005,6 +1005,120 @@ def merge_duplicate_l11_by_qualifier(lines: list[str]) -> list[str]:
             kept_counts[key] += 1
 
     return merged
+
+
+def merge_duplicate_ref_by_qualifier(lines: list[str]) -> list[str]:
+    placeholder_values = {
+        "",
+        "X",
+        "XX",
+        "XXX",
+        "S",
+        "SV",
+        "SAMPLE",
+        "SAMPLE_VALUE",
+        "SAMPLE VALUE",
+        "XXXX",
+        "XXXXXXX",
+        "XXXXXXXX",
+    }
+
+    def rank_ref(line: str) -> tuple[int, int]:
+        # Prefer REF lines with more meaningful values and more populated elements.
+        parts = str(line or "").strip().rstrip("~").split("*")[1:]
+        meaningful = sum(1 for part in parts if str(part or "").strip().upper() not in placeholder_values)
+        return (meaningful, len(parts))
+
+    def flush_cluster(cluster: list[str]) -> list[str]:
+        if not cluster:
+            return []
+
+        order: list[str] = []
+        best_by_qualifier: dict[str, str] = {}
+        for line in cluster:
+            parts = str(line or "").strip().rstrip("~").split("*")
+            qualifier = parts[1].strip().upper() if len(parts) > 1 else ""
+            if qualifier not in best_by_qualifier:
+                order.append(qualifier)
+                best_by_qualifier[qualifier] = line
+                continue
+            if rank_ref(line) > rank_ref(best_by_qualifier[qualifier]):
+                best_by_qualifier[qualifier] = line
+
+        return [str(best_by_qualifier[q] or "").strip() for q in order]
+
+    merged: list[str] = []
+    cluster: list[str] = []
+    for line in lines:
+        text = str(line or "").strip()
+        if text.startswith("REF*"):
+            cluster.append(text)
+            continue
+        merged.extend(flush_cluster(cluster))
+        cluster = []
+        merged.append(text)
+    merged.extend(flush_cluster(cluster))
+    return merged
+
+
+def drop_empty_ref_lines(lines: list[str]) -> list[str]:
+    kept: list[str] = []
+    for line in lines:
+        text = str(line or "").strip()
+        if text.startswith("REF*"):
+            parts = text.rstrip("~").split("*")
+            trailing = [str(part or "").strip() for part in parts[2:]]
+            if not any(trailing):
+                continue
+        kept.append(text)
+    return kept
+
+
+def attach_856_n1_children_by_qualifier(bucket_lines: list[tuple[str, str | None]]) -> list[str]:
+    child_ids = {"N2", "N3", "N4", "REF"}
+    pending_by_qualifier: dict[str, list[str]] = {}
+    ordered_main: list[str] = []
+
+    for line, qualifier_hint in bucket_lines:
+        text = str(line or "").strip()
+        segment_id = text.split("*", 1)[0].upper() if text else ""
+        qualifier = str(qualifier_hint or "").strip().upper()
+
+        if segment_id in child_ids and qualifier:
+            pending_by_qualifier.setdefault(qualifier, []).append(text)
+            continue
+
+        ordered_main.append(text)
+
+    if not pending_by_qualifier:
+        return ordered_main
+
+    attached: list[str] = []
+    consumed: set[str] = set()
+    for text in ordered_main:
+        attached.append(text)
+        if not text.startswith("N1*"):
+            continue
+
+        parts = text.rstrip("~").split("*")
+        n1_qualifier = parts[1].strip().upper() if len(parts) > 1 else ""
+        if not n1_qualifier:
+            continue
+
+        children = pending_by_qualifier.get(n1_qualifier)
+        if not children or n1_qualifier in consumed:
+            continue
+
+        attached.extend(children)
+        consumed.add(n1_qualifier)
+
+    # Keep unmatched children at end to avoid dropping mapped lines.
+    for qualifier, children in pending_by_qualifier.items():
+        if qualifier in consumed:
+            continue
+        attached.extend(children)
+
+    return attached
 
 
 def attach_g61_to_matching_n1_group(lines: list[str]) -> list[str]:
@@ -1527,6 +1641,11 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
         if segment_id in CONTROL_SEGMENTS:
             continue
 
+        # For 856, HL hierarchy is generated in a dedicated pass below.
+        # Ignore mapped HL segments to avoid duplicate/invalid HL lines.
+        if transaction_set == "856" and segment_id == "HL":
+            continue
+
         if transaction_set == "214" and segment_id == "B10":
             if b10_emitted:
                 continue
@@ -1574,8 +1693,6 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                     hl_types_seen.append(ht)
                     hl_types_set.add(ht)
 
-        n1_children = {"N2", "N3", "N4"}  # must follow their N1 parent
-
         # Build HL segment lines
         hl_type_to_line: dict[str, str] = {}
         hl_counter = 0
@@ -1591,45 +1708,43 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
 
         # Build a map from emitted_line -> hl_type using occurrence hl_type field.
         # We match by occurrence_key stored in ordered_occurrences.
-        line_to_hl: dict[int, str] = {}  # index in data_lines -> hl_type
         ship_ht = next((h for h in hl_types_seen if h == "S"), hl_types_seen[0] if hl_types_seen else None)
         item_ht = next((h for h in hl_types_seen if h != "S"), ship_ht)
 
         # Re-emit in order to map each data_line to its hl_type
         data_line_hl: list[str | None] = []  # parallel to data_lines
+        data_line_group4_qualifier: list[str | None] = []  # parallel to data_lines
         for item in ordered_occurrences:
             seg = item["segment_id"]
             if seg in CONTROL_SEGMENTS or seg == "CTT":
                 continue
             ht = item.get("hl_type")
+            occ_key = str(item.get("occurrence_key", ""))
+            group4_match = re.search(r"GROUP_4\[([A-Z0-9]{1,10})\]", occ_key, re.IGNORECASE)
+            group4_qualifier = group4_match.group(1).upper() if group4_match else None
             # For segments with no HL type (BSN, DTM at top level) ht stays None
             data_line_hl.append(ht)
+            data_line_group4_qualifier.append(group4_qualifier)
 
         # Classify data_lines into top-level and per-HL buckets using data_line_hl.
         top_segs_856 = {"BSN", "DTM"}
         top_lines: list[str] = []
-        hl_buckets: dict[str, list[str]] = {ht: [] for ht in hl_types_seen}
-        last_n1_bucket: str | None = None
+        hl_buckets: dict[str, list[tuple[str, str | None]]] = {ht: [] for ht in hl_types_seen}
 
         for idx_dl, dl in enumerate(data_lines):
             seg = dl.rstrip("~").split("*")[0].upper()
             ht = data_line_hl[idx_dl] if idx_dl < len(data_line_hl) else None
+            group4_qualifier = (
+                data_line_group4_qualifier[idx_dl] if idx_dl < len(data_line_group4_qualifier) else None
+            )
 
             if seg in top_segs_856 and ht is None:
                 top_lines.append(dl)
-            elif seg in n1_children:
-                target = last_n1_bucket if last_n1_bucket else ship_ht
-                if target and target in hl_buckets:
-                    hl_buckets[target].append(dl)
-                else:
-                    top_lines.append(dl)
             else:
                 # Use hl_type from occurrence; fallback to shipment
                 bucket = ht if (ht and ht in hl_buckets) else ship_ht
                 if bucket and bucket in hl_buckets:
-                    if seg == "N1":
-                        last_n1_bucket = bucket
-                    hl_buckets[bucket].append(dl)
+                    hl_buckets[bucket].append((dl, group4_qualifier))
                 else:
                     top_lines.append(dl)
 
@@ -1639,14 +1754,15 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
             ship_bucket = hl_buckets[ship_ht]
             item_bucket = hl_buckets.get(item_ht, []) if item_ht else []
 
-            def dtm_qualifier(line: str) -> str | None:
+            def dtm_qualifier(entry: tuple[str, str | None]) -> str | None:
+                line = str(entry[0] or "").strip()
                 parts = line.rstrip("~").split("*")
                 if len(parts) >= 2 and parts[0].upper() == "DTM":
                     return parts[1].strip().upper()
                 return None
 
             # Collect all DTM lines from both buckets keyed by qualifier.
-            dtm_pool: dict[str, list[str]] = {}
+            dtm_pool: dict[str, list[tuple[str, str | None]]] = {}
             for src_line in [*ship_bucket, *item_bucket]:
                 q = dtm_qualifier(src_line)
                 if not q:
@@ -1655,28 +1771,36 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
 
             ROUTED_QUALIFIERS = {"193", "194", "161"}
 
-            def rebuild_bucket(base_lines: list[str], allowed_qualifiers: list[str]) -> list[str]:
+            def rebuild_bucket(
+                base_lines: list[tuple[str, str | None]],
+                allowed_qualifiers: list[str],
+            ) -> list[tuple[str, str | None]]:
                 non_dtm = [
-                    line
-                    for line in base_lines
-                    if line.rstrip("~").split("*")[0].upper() != "DTM"
+                    entry
+                    for entry in base_lines
+                    if str(entry[0] or "").strip().rstrip("~").split("*")[0].upper() != "DTM"
                 ]
 
                 # Preserve DTMs whose qualifier is NOT being rerouted (keep them in place)
                 local_dtm = [
-                    line for line in base_lines
-                    if line.rstrip("~").split("*")[0].upper() == "DTM"
-                    and (dtm_qualifier(line) or "") not in ROUTED_QUALIFIERS
+                    entry
+                    for entry in base_lines
+                    if str(entry[0] or "").strip().rstrip("~").split("*")[0].upper() == "DTM"
+                    and (dtm_qualifier(entry) or "") not in ROUTED_QUALIFIERS
                 ]
 
                 # Add routed qualifiers from the pool
-                kept_dtm: list[str] = []
+                kept_dtm: list[tuple[str, str | None]] = []
                 for q in allowed_qualifiers:
                     if q in dtm_pool and dtm_pool[q]:
                         kept_dtm.append(dtm_pool[q][0])
 
                 insert_idx = next(
-                    (idx for idx, line in enumerate(non_dtm) if line.rstrip("~").split("*")[0].upper() == "N1"),
+                    (
+                        idx
+                        for idx, entry in enumerate(non_dtm)
+                        if str(entry[0] or "").strip().rstrip("~").split("*")[0].upper() == "N1"
+                    ),
                     len(non_dtm),
                 )
                 return non_dtm[:insert_idx] + local_dtm + kept_dtm + non_dtm[insert_idx:]
@@ -1693,7 +1817,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
         for ht in hl_types_seen:
             if ht in hl_type_to_line:
                 expanded_856.append(hl_type_to_line[ht])
-            expanded_856.extend(hl_buckets[ht])
+            expanded_856.extend(attach_856_n1_children_by_qualifier(hl_buckets[ht]))
         data_lines = expanded_856
 
     if transaction_set == "214" and group3_lines_by_loop:
@@ -1720,6 +1844,8 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
         data_lines = collapse_to_single_lx(data_lines)
         data_lines = merge_at7_ms1_groups(data_lines)
         data_lines = merge_duplicate_mea_by_qualifier(data_lines)
+        data_lines = merge_duplicate_ref_by_qualifier(data_lines)
+        data_lines = drop_empty_ref_lines(data_lines)
         data_lines = drop_placeholder_only_cd3(data_lines)
 
     if transaction_set == "214":
