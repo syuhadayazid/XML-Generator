@@ -1458,6 +1458,8 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                     continue
                 dtm_pool.setdefault(q, []).append(src_line)
 
+            ROUTED_QUALIFIERS = {"193", "194", "161"}
+
             def rebuild_bucket(base_lines: list[str], allowed_qualifiers: list[str]) -> list[str]:
                 non_dtm = [
                     line
@@ -1465,6 +1467,14 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                     if line.rstrip("~").split("*")[0].upper() != "DTM"
                 ]
 
+                # Preserve DTMs whose qualifier is NOT being rerouted (keep them in place)
+                local_dtm = [
+                    line for line in base_lines
+                    if line.rstrip("~").split("*")[0].upper() == "DTM"
+                    and (dtm_qualifier(line) or "") not in ROUTED_QUALIFIERS
+                ]
+
+                # Add routed qualifiers from the pool
                 kept_dtm: list[str] = []
                 for q in allowed_qualifiers:
                     if q in dtm_pool and dtm_pool[q]:
@@ -1474,7 +1484,7 @@ def build_sample_edi(rows: list[tuple[str, str | None]], transaction_set: str) -
                     (idx for idx, line in enumerate(non_dtm) if line.rstrip("~").split("*")[0].upper() == "N1"),
                     len(non_dtm),
                 )
-                return non_dtm[:insert_idx] + kept_dtm + non_dtm[insert_idx:]
+                return non_dtm[:insert_idx] + local_dtm + kept_dtm + non_dtm[insert_idx:]
 
             hl_buckets[ship_ht] = rebuild_bucket(ship_bucket, ["193", "194"])
             if item_ht and item_ht in hl_buckets:

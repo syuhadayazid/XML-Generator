@@ -1033,8 +1033,16 @@
             dtmPool[q].push(src);
           }
 
+          const ROUTED_QUALIFIERS = new Set(["193", "194", "161"]);
+
           const rebuildBucket = (baseLines, allowedQualifiers) => {
             const nonDtm = baseLines.filter((line) => String(line || "").trim().split("*", 1)[0].toUpperCase() !== "DTM");
+            // Preserve DTMs not being rerouted
+            const localDtm = baseLines.filter((line) => {
+              const parts = String(line || "").trim().replace(/~$/, "").split("*");
+              const q = (parts[1] || "").trim().toUpperCase();
+              return parts[0].toUpperCase() === "DTM" && !ROUTED_QUALIFIERS.has(q);
+            });
             const keptDtm = [];
             for (const q of allowedQualifiers) {
               if (dtmPool[q] && dtmPool[q].length) keptDtm.push(dtmPool[q][0]);
@@ -1046,7 +1054,7 @@
                 break;
               }
             }
-            return [...nonDtm.slice(0, insertIdx), ...keptDtm, ...nonDtm.slice(insertIdx)];
+            return [...nonDtm.slice(0, insertIdx), ...localDtm, ...keptDtm, ...nonDtm.slice(insertIdx)];
           };
 
           hlBuckets[shipHt] = rebuildBucket(shipBucket, ["193", "194"]);
