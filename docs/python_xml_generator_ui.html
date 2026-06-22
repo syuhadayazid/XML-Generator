@@ -1598,6 +1598,14 @@
           const seg = segments[i].trim();
           if (!seg) continue;
 
+          // XPath text() is content for the current node, not a child tag.
+          if (seg === "text()" || seg === "px:text()") {
+            if (current) {
+              current.text = forceSample ? "SAMPLE_VALUE" : "SAMPLE_VALUE";
+            }
+            continue;
+          }
+
           if (seg.startsWith("@") || seg.startsWith("px:@")) {
             if (current) {
               const name = localName(seg.startsWith("@") ? seg.slice(1) : seg.slice(4));
@@ -1669,7 +1677,9 @@
           }
         } else {
           if (!looksLikeXmlPath(text)) continue;
-          records.push({ path: text, value: null });
+          // Keep XML structure stable by treating text() selectors as leaf-node content.
+          const normalizedXmlPath = text.replace(/\/text\(\)/gi, "");
+          records.push({ path: normalizedXmlPath, value: null });
         }
       }
 
