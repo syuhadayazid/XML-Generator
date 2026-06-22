@@ -567,11 +567,15 @@
       const pred = segPart.slice(segPart.indexOf("[") + 1, segPart.lastIndexOf("]"));
       if (!pred) return {};
       const out = {};
-      const re = new RegExp(`\\b${segId}(\\d{2})\\b\\s*=\\s*['"]?([A-Za-z0-9]{1,20})['"]?`, "gi");
+      const re = new RegExp(`\\b${segId}(\\d{2})\\b\\s*=\\s*['\"]?([^'\"]+?)['\"]?(?=\\s*(?:\\band\\b|$))`, "gi");
       let m;
       while ((m = re.exec(pred)) !== null) {
         const pos = parseInt(m[1], 10);
-        if (pos >= 1) out[pos] = m[2].toUpperCase();
+        if (pos >= 1) {
+          let cleaned = String(m[2] || "").trim();
+          if (/^[A-Za-z0-9]+$/.test(cleaned)) cleaned = cleaned.toUpperCase();
+          out[pos] = cleaned;
+        }
       }
       return out;
     }
@@ -653,6 +657,11 @@
       return first;
     }
 
+    function compactRefLabel(label) {
+      const text = String(label || "").trim().replace(/[^A-Za-z0-9]+/g, "");
+      return text || "SAMPLE_VALUE";
+    }
+
     function getEdiSample(segId, pos, ts) {
       const n = new Date(), pad = v => String(v).padStart(2,"0");
       const ymd = `${n.getFullYear()}${pad(n.getMonth()+1)}${pad(n.getDate())}`;
@@ -713,30 +722,46 @@
       }
 
       const top856 = { BSN: 10, DTM: 20, GROUP_1: 30 };
-      const g1sOrder = { REF: 20, DTM: 30, GROUP_4: 40 };
-      const g1iOrder = { LIN: 10, SN1: 20, TD3: 25, REF: 30, DTM: 40, GROUP_4: 60 };
+      const g1sOrder = { TD1: 10, TD5: 15, REF: 20, DTM: 30, GROUP_4: 40 };
+      const g1iOrder = {
+        LIN: 10,
+        SN1: 20,
+        MEA: 22,
+        PWK: 23,
+        PKG: 24,
+        TD1: 25,
+        TD5: 26,
+        TD3: 27,
+        TD4: 28,
+        TSD: 29,
+        REF: 30,
+        MAN: 35,
+        DTM: 40,
+        GROUP_4: 60,
+        CUR: 70,
+      };
       const g4Order = { N1: 10, N2: 20, N3: 30, N4: 40, REF: 50 };
 
       if (!parts.length) return [999, rep, segId, oKey];
       const first = parts[0].toUpperCase();
       if (first !== "GROUP_1") return [0, top856[first] ?? 900, rep, segId, oKey];
 
-      const hm = String(oKey || "").match(/HL03\s*=\s*['\"]?([A-Z])['\"]?/i);
+      const hm = String(oKey || "").match(/HL03\s*=\s*['\"]?([A-Z0-9]{1,3})['\"]?/i);
       const ht = hm ? hm[1].toUpperCase() : "S";
       const hlOrder = ht === "S" ? 0 : 1;
 
-      if (parts.length === 1) return [1, hlOrder, rep, segId, oKey];
+      if (parts.length === 1) return [1, hlOrder, segId, rep, oKey];
       const second = parts[1].toUpperCase();
       if (second.startsWith("GROUP_4")) {
         const n1qm = String(oKey || "").match(/GROUP_4\[([A-Z0-9]{1,10})\]/i);
         const n1q = n1qm ? n1qm[1].toUpperCase() : "";
         const inner = g4Order[segId] ?? 900;
         const parent = ht === "S" ? (g1sOrder.GROUP_4 ?? 40) : (g1iOrder.GROUP_4 ?? 60);
-        return [1, hlOrder, rep, parent, n1q, inner, oKey];
+        return [1, hlOrder, parent, n1q, inner, rep, oKey];
       }
 
       const map = ht === "S" ? g1sOrder : g1iOrder;
-      return [1, hlOrder, rep, map[segId] ?? 900, oKey];
+      return [1, hlOrder, map[segId] ?? 900, rep, oKey];
     }
 
     function cmpKeys(a,b) {
@@ -803,6 +828,50 @@
       return merged;
     }
 
+    function mergeDuplicateMeaByQualifier(lines) {
+      const PH = new Set(["", "X", "XX", "XXX", "S", "SV", "SAMPLE", "SAMPLE_VALUE", "XXXX", "XXXXXXX", "XXXXXXXX"]);
+      const rankMea = (line) => {
+        const parts = String(line || "").trim().replace(/~$/, "").split("*").slice(1);
+        const meaningful = parts.filter(p => !PH.has(String(p || "").trim().toUpperCase())).length;
+        return [parts.length, meaningful];
+      };
+      const flushCluster = (cluster) => {
+        if (!cluster.length) return [];
+        const order = [];
+        const best = new Map();
+        for (const line of cluster) {
+          const parts = String(line || "").trim().replace(/~$/, "").split("*");
+          const q1 = String(parts[1] || "").trim().toUpperCase();
+          const q2 = String(parts[2] || "").trim().toUpperCase();
+          const key = `${q1}|${q2}`;
+          if (!best.has(key)) {
+            order.push(key);
+            best.set(key, line);
+            continue;
+          }
+          const [a0, a1] = rankMea(line);
+          const [b0, b1] = rankMea(best.get(key));
+          if (a0 > b0 || (a0 === b0 && a1 > b1)) best.set(key, line);
+        }
+        return order.map(key => String(best.get(key) || "").trim());
+      };
+
+      const merged = [];
+      let cluster = [];
+      for (const line of lines) {
+        const t = String(line || "").trim();
+        if (t.startsWith("MEA*")) {
+          cluster.push(t);
+          continue;
+        }
+        merged.push(...flushCluster(cluster));
+        cluster = [];
+        merged.push(t);
+      }
+      merged.push(...flushCluster(cluster));
+      return merged;
+    }
+
     function dropPlaceholderN1Children(lines) {
       const childIds = new Set([]);
       const ph = new Set(["", "X", "XX", "XXX", "S", "SV", "SAMPLE", "SAMPLE_VALUE", "XXXX", "XXXXXXX", "XXXXXXXX"]);
@@ -837,7 +906,7 @@
         const parsed=parseX12PathFull(record.path);
         if (!parsed) continue;
         let {segId,position,oKey,qualifier}=parsed;
-        const hlMatch = String(record.path || "").match(/GROUP_1\s*\[.*?HL03\s*=\s*['"]?([A-Z])['"]?/i);
+        const hlMatch = String(record.path || "").match(/GROUP_1\s*\[.*?HL03\s*=\s*['"]?([A-Z0-9]{1,3})['"]?/i);
         const hlType = hlMatch ? hlMatch[1].toUpperCase() : null;
 
         const inlineA={ ...extractPathAssignments(record.path, segId), ...extractInlineAssignments(record.value,segId) };
@@ -851,7 +920,9 @@
           if(segId!=="LIN") oKey=`${oKey}[${qualifier}]`;
           if(segId==="N1"&&!inlineA[1]) inlineA[1]=qualifier;
           if(segId==="L11"&&!inlineA[2]) inlineA[2]=qualifier;
-          if(segId==="REF"&&!inlineA[1]) inlineA[1]=qualifier;
+          if(segId==="REF") {
+            if(!inlineA[1]) inlineA[1]=qualifier;
+          }
           if(segId==="DTM"&&!inlineA[1]) inlineA[1]=qualifier;
           if(segId==="LIN"&&!inlineA[2]) inlineA[2]=qualifier;
         }
@@ -859,6 +930,16 @@
         const assignedV=inlineA[position];
         if(assignedV&&PH.has(value.toUpperCase())) value=assignedV;
         if(segId==="REF"&&position!==1&&["SV","S","SAMPLE"].includes(value.toUpperCase())) value="SAMPLE_VALUE";
+        if(segId==="REF") {
+          const ref03M = String(record.path||"").match(/\bREF03\s*=\s*["']([^"']+)["']/i);
+          const isShipHeaderRef = qualifier==="ZZ" && String(record.path||"").includes('/GROUP_1[HL/HL03="S"]/REF[');
+          if(ref03M && isShipHeaderRef) {
+            const ref03Label = String(ref03M[1]||"").trim();
+            inlineA[3] = ref03Label;
+            if(position===2) value = compactRefLabel(ref03Label);
+            else if(position===3 && ["","S","SV","SAM","SAMPLE","SAMPLE_VALUE"].includes(value.toUpperCase())) value = ref03Label;
+          }
+        }
 
         if(CTRL.has(segId)) continue;
         if(segId==="CTT") continue;
@@ -903,7 +984,7 @@
         const vals=[];
         for(let pos=1;pos<=maxP;pos++) {
           let raw=src.get(pos)??"";
-          if(!raw||raw==="SAMPLE_VALUE") raw=getEdiSample(segId,pos,transactionSet);
+          if(!raw||(raw==="SAMPLE_VALUE"&&!(segId==="REF"&&pos===1))) raw=getEdiSample(segId,pos,transactionSet);
           if(segId==="G61"){if(pos===1&&PH2.has(raw.toString().toUpperCase()))raw="CN";else if(pos===2&&PH2.has(raw.toString().toUpperCase()))raw=ymd;else if(pos>2&&PH2.has(raw.toString().toUpperCase()))raw="";}
           if(segId==="G62"){if(pos===1&&PH2.has(raw.toString().toUpperCase()))raw="86";else if(pos===2&&PH2.has(raw.toString().toUpperCase()))raw=ymd;else if(pos===3&&PH2.has(raw.toString().toUpperCase()))raw="8";else if(pos===4&&PH2.has(raw.toString().toUpperCase()))raw=hm;else if(pos>4&&PH2.has(raw.toString().toUpperCase()))raw="";}
           if(segId==="DTM"&&pos===2){const rn=raw.toString().trim().toUpperCase();if(PH2.has(rn)||rn.startsWith("SAMPLE"))raw=ymd;}
@@ -955,7 +1036,7 @@
         const hlTypesSeen = [];
         const hlTypeSet = new Set();
         for (const r of records) {
-          const m = String(r.path || "").match(/GROUP_1\s*\[.*?HL03\s*=\s*['"]?([A-Z])['"]?/i);
+          const m = String(r.path || "").match(/GROUP_1\s*\[.*?HL03\s*=\s*['"]?([A-Z0-9]{1,3})['"]?/i);
           if (m) {
             const ht = m[1].toUpperCase();
             if (!hlTypeSet.has(ht)) {
@@ -1079,6 +1160,7 @@
         dataLines=collapseAt8(dataLines);
         dataLines=collapseLx(dataLines);
         dataLines=mergeAt7Ms1(dataLines);
+        dataLines=mergeDuplicateMeaByQualifier(dataLines);
       }
 
       if(transactionSet==="214") {
