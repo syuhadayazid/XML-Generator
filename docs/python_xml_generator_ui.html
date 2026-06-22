@@ -680,7 +680,8 @@
     }
 
     function fmtEdi(segId, pos, val) {
-      const t = String(val ?? "");
+      let t = String(val ?? "");
+      if (t.trim().toUpperCase() === "SAMPLE_VALUE") t = "SAMPLE VALUE";
       if (segId==="ISA" && (pos===6||pos===8)) return t.slice(0,15).padEnd(15," ");
       if (segId==="ISA" && pos===9 && /^\d{8}$/.test(t)) return t.slice(2);
       if (segId==="ISA" && pos===13) return (t.replace(/\D/g,"")||"0").slice(-9).padStart(9,"0");
